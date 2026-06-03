@@ -20,35 +20,27 @@
       </div>
     </header>
 
-    <section class="hero glass">
-      <div class="hero-copy">
-        <h2>核心原则</h2>
-        <p class="lead">
-          先判断图片是否为 AI 生成，再在已采样平台 <code>文心一言</code>、<code>通义千问</code>、<code>即梦AI</code>、<code>智谱 GLM-Image</code> 中做来源归因。
-          当前归因成立的核心依据不是纯内容风格，而是平台导出链路留下的尺寸、格式、EXIF、alpha 通道和信息字段差异。
+    <section class="overview-strip">
+      <div class="overview-copy">
+        <p class="overview-kicker">文件层留痕优先解释</p>
+        <p class="overview-text">
+          系统先判断图片是否属于 AI 生成，再在已采样平台 <code>文心一言</code>、<code>通义千问</code>、<code>即梦AI</code>、<code>智谱 GLM-Image</code>
+          中做来源归因。当前归因主要依据导出尺寸、图像格式、EXIF、alpha 通道和信息字段差异，而不是单纯内容风格。
         </p>
-        <div class="hero-stats">
-          <div class="stat-card">
-            <span class="stat-k">147</span>
-            <span class="stat-v">混合样本</span>
-          </div>
-          <div class="stat-card">
-            <span class="stat-k">126</span>
-            <span class="stat-v">平台生成图</span>
-          </div>
-          <div class="stat-card">
-            <span class="stat-k">4</span>
-            <span class="stat-v">已采样平台</span>
-          </div>
-        </div>
       </div>
-      <div class="notice">
-        <h2>已知限制</h2>
-        <ul>
-          <li>平台归因高度依赖导出分辨率、格式、EXIF 和文件信息键等文件层信号。</li>
-          <li><code>即梦AI</code> 和 <code>智谱 GLM-Image</code> 样本量小，归因结论只能按原型解释。</li>
-          <li>未采样平台、二次传播图、重编辑图不在当前归因覆盖范围内。</li>
-        </ul>
+      <div class="overview-stats">
+        <div class="stat-card">
+          <span class="stat-k">147</span>
+          <span class="stat-v">混合样本</span>
+        </div>
+        <div class="stat-card">
+          <span class="stat-k">126</span>
+          <span class="stat-v">平台生成图</span>
+        </div>
+        <div class="stat-card">
+          <span class="stat-k">4</span>
+          <span class="stat-v">已采样平台</span>
+        </div>
       </div>
     </section>
 
@@ -81,6 +73,11 @@
           <p id="statusText" class="status">等待上传</p>
         </div>
         <div class="preview-box">
+          <div id="previewPlaceholder" class="preview-placeholder">
+            <span class="preview-label">预览区</span>
+            <strong>上传图片后在这里查看原图</strong>
+            <p>单图识别会展示当前图片，批量识别时保留首张预览。</p>
+          </div>
           <img id="previewImage" alt="预览图">
         </div>
       </section>
@@ -104,22 +101,22 @@
     </section>
 
     <section class="results-grid">
-      <article class="panel">
+      <article class="panel panel-summary">
         <div class="panel-toolbar compact">
           <h2>识别结果</h2>
           <button id="exportSingleReportBtn" type="button" class="ghost-btn">导出单张报告</button>
         </div>
         <div id="resultSummary" class="empty">尚未识别</div>
       </article>
-      <article class="panel">
+      <article class="panel panel-probabilities">
         <h2>平台概率</h2>
         <div id="platformProbabilities" class="empty">尚未识别</div>
       </article>
-      <article class="panel">
+      <article class="panel panel-signals">
         <h2>文件层信号</h2>
         <div id="signalSnapshot" class="empty">尚未识别</div>
       </article>
-      <article class="panel">
+      <article class="panel panel-rationale">
         <h2>解释</h2>
         <div id="rationaleBox" class="empty">尚未识别</div>
       </article>

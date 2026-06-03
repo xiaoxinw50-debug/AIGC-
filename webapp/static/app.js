@@ -3,6 +3,7 @@ const predictBtn = document.getElementById('predictBtn');
 const batchPredictBtn = document.getElementById('batchPredictBtn');
 const statusText = document.getElementById('statusText');
 const previewImage = document.getElementById('previewImage');
+const previewPlaceholder = document.getElementById('previewPlaceholder');
 const resultSummary = document.getElementById('resultSummary');
 const platformProbabilities = document.getElementById('platformProbabilities');
 const signalSnapshot = document.getElementById('signalSnapshot');
@@ -233,6 +234,9 @@ fileInput.addEventListener('change', () => {
   const file = getSelectedFiles()[0];
   if (!file) {
     previewImage.style.display = 'none';
+    if (previewPlaceholder) {
+      previewPlaceholder.style.display = 'grid';
+    }
     setStatus('等待上传');
     return;
   }
@@ -240,6 +244,9 @@ fileInput.addEventListener('change', () => {
   reader.onload = (e) => {
     previewImage.src = e.target.result;
     previewImage.style.display = 'block';
+    if (previewPlaceholder) {
+      previewPlaceholder.style.display = 'none';
+    }
   };
   reader.readAsDataURL(file);
   const selectedFiles = getSelectedFiles();
