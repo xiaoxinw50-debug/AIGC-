@@ -8,6 +8,13 @@ const statusText = document.getElementById('statusText');
 const fileInput = document.getElementById('fileInput');
 const localPreviewBtn = document.getElementById('localPreviewBtn');
 const resetSampleBtn = document.getElementById('resetSampleBtn');
+const PLATFORM_NAME_MAP = {
+  PLT01: '文心一言',
+  PLT02: '通义千问',
+  PLT03: '即梦AI / 字节系文生图',
+  PLT05: '智谱GLM-Image / 清言相关文生图',
+  real: '真实图片'
+};
 
 let samples = [];
 let activeSampleId = null;
@@ -23,6 +30,10 @@ function escapeHtml(value) {
     .replaceAll('>', '&gt;')
     .replaceAll('"', '&quot;')
     .replaceAll("'", '&#39;');
+}
+
+function platformDisplayName(code) {
+  return PLATFORM_NAME_MAP[code] || code;
 }
 
 function renderResult(sample) {
@@ -42,7 +53,7 @@ function renderResult(sample) {
           <strong>${escapeHtml(result.platform_label_text)}</strong>
         </div>
       </div>
-      <div><strong>平台标签：</strong>${escapeHtml(result.platform_label)}</div>
+      <div><strong>平台来源：</strong>${escapeHtml(result.platform_label_text)}</div>
       <div class="sample-note"><strong>样本说明：</strong>${escapeHtml(sample.summary)}</div>
     </div>
   `;
@@ -51,7 +62,7 @@ function renderResult(sample) {
     .sort((a, b) => b[1] - a[1])
     .map(([label, prob]) => `
       <div class="prob-row">
-        <div class="prob-head"><span>${escapeHtml(label)}</span><strong>${(prob * 100).toFixed(2)}%</strong></div>
+        <div class="prob-head"><span>${escapeHtml(platformDisplayName(label))}</span><strong>${(prob * 100).toFixed(2)}%</strong></div>
         <div class="prob-track"><div class="prob-fill" style="width:${(prob * 100).toFixed(2)}%"></div></div>
       </div>
     `)
