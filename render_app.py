@@ -103,9 +103,6 @@ HTML = """
     h2 { margin:0 0 10px; font-size:18px; }
     p, li { color:var(--muted); }
     .eyebrow { color:var(--brand); font-weight:700; font-size:12px; letter-spacing:.08em; text-transform:uppercase; margin:0 0 10px; }
-    .stats { display:flex; gap:12px; flex-wrap:wrap; margin-top:16px; }
-    .stat { min-width:108px; padding:12px 14px; border:1px solid var(--line); border-radius:14px; }
-    .stat b { display:block; color:var(--brand); font-size:24px; line-height:1; margin-bottom:4px; }
     .layout { display:grid; grid-template-columns:360px 1fr; gap:18px; margin-bottom:18px; }
     .drop { border:1px dashed #cfb39f; border-radius:16px; padding:20px; background:#fff; }
     input[type=file] { width:100%; margin:8px 0 14px; }
@@ -141,11 +138,6 @@ HTML = """
         <p class="eyebrow">AIGC 标识治理 · Live Inference Demo</p>
         <h1>AI 图片识别与平台归因</h1>
         <p>先判断图片是否为 AI 生成，再在已采样平台 <code>文心一言</code>、<code>通义千问</code>、<code>即梦AI</code>、<code>智谱 GLM-Image</code> 中做来源归因。当前归因依据以文件层留痕为主，而非纯内容语义。</p>
-        <div class="stats">
-          <div class="stat"><b>147</b><span>混合样本</span></div>
-          <div class="stat"><b>126</b><span>平台生成图</span></div>
-          <div class="stat"><b>4</b><span>已采样平台</span></div>
-        </div>
       </article>
       <article class="panel">
         <h2>解释边界</h2>
