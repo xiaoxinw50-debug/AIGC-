@@ -1,0 +1,287 @@
+{
+  "samples": [
+    {
+      "id": "plt05-pr102",
+      "title": "智谱GLM-Image / PR102 / 虫子异物",
+      "subtitle": "第一轮重点样本中风险最高的一条",
+      "summary": "无可见角标，提示服从强，手机客诉图观感最接近真实。",
+      "image": "./assets/samples/plt05_pr102.png",
+      "result": {
+        "binary_label": "generated",
+        "platform_label": "PLT05",
+        "platform_label_text": "智谱GLM-Image / 清言相关文生图（PLT05）",
+        "generated_probability": 0.99805259,
+        "platform_probabilities": {
+          "PLT01": 0.009357227982000435,
+          "PLT02": 0.012544317862754981,
+          "PLT03": 0.002384974257630431,
+          "PLT05": 0.9757134798976141
+        },
+        "signal_snapshot": [
+          {
+            "label": "原始尺寸",
+            "value": "1280 x 1280"
+          },
+          {
+            "label": "纵横比",
+            "value": "1.000"
+          },
+          {
+            "label": "像素规模",
+            "value": "1.638 MP"
+          },
+          {
+            "label": "文件大小",
+            "value": "2753.2 KB"
+          },
+          {
+            "label": "PNG",
+            "value": "是"
+          },
+          {
+            "label": "JPEG",
+            "value": "否"
+          },
+          {
+            "label": "WEBP",
+            "value": "否"
+          },
+          {
+            "label": "Alpha通道",
+            "value": "是"
+          },
+          {
+            "label": "EXIF",
+            "value": "无"
+          },
+          {
+            "label": "信息键数量",
+            "value": "0"
+          },
+          {
+            "label": "通道数",
+            "value": "4"
+          }
+        ],
+        "rationale": [
+          "当前模型先判断为 generated，概率为 99.81%；随后在已采样平台中做归因，当前给出的平台是 智谱GLM-Image / 清言相关文生图（PLT05）。",
+          "平台归因当前主要依赖文件层与导出链路信号，而不是纯语义内容。",
+          "这张图当前被模型重点利用的直接信号包括：PNG 导出、带 alpha 通道、尺寸 1280x1280。",
+          "这一样本的现实意义在于：它在售后风险扩展中属于“无明显角标、拟真度更高”的高风险样本。"
+        ]
+      }
+    },
+    {
+      "id": "plt03-pr101",
+      "title": "即梦AI / PR101 / 头发异物",
+      "subtitle": "生成成功，但风险并不高",
+      "summary": "保存图保留可见 AI 提示，且拟真度偏弱。",
+      "image": "./assets/samples/plt03_pr101.png",
+      "result": {
+        "binary_label": "generated",
+        "platform_label": "PLT03",
+        "platform_label_text": "即梦AI / 字节系文生图（PLT03）",
+        "generated_probability": 0.99844216,
+        "platform_probabilities": {
+          "PLT01": 0.10169621372516696,
+          "PLT02": 0.24258473709447262,
+          "PLT03": 0.4785415831119036,
+          "PLT05": 0.17717746606845675
+        },
+        "signal_snapshot": [
+          {
+            "label": "原始尺寸",
+            "value": "720 x 720"
+          },
+          {
+            "label": "纵横比",
+            "value": "1.000"
+          },
+          {
+            "label": "像素规模",
+            "value": "0.518 MP"
+          },
+          {
+            "label": "文件大小",
+            "value": "658.9 KB"
+          },
+          {
+            "label": "PNG",
+            "value": "是"
+          },
+          {
+            "label": "JPEG",
+            "value": "否"
+          },
+          {
+            "label": "WEBP",
+            "value": "否"
+          },
+          {
+            "label": "Alpha通道",
+            "value": "是"
+          },
+          {
+            "label": "EXIF",
+            "value": "无"
+          },
+          {
+            "label": "信息键数量",
+            "value": "0"
+          },
+          {
+            "label": "通道数",
+            "value": "4"
+          }
+        ],
+        "rationale": [
+          "当前模型先判断为 generated，概率为 99.84%；随后在已采样平台中做归因，当前给出的平台是 即梦AI / 字节系文生图（PLT03）。",
+          "平台归因当前主要依赖文件层与导出链路信号，而不是纯语义内容。",
+          "这张图当前被模型重点利用的直接信号包括：PNG 导出、带 alpha 通道、尺寸 720x720。",
+          "这一样本说明：平台能生成目标情节，不等于它就是最危险的平台；留痕强弱与拟真度同样重要。"
+        ]
+      }
+    },
+    {
+      "id": "plt05-pr105",
+      "title": "智谱GLM-Image / PR105 / 榴莲发霉",
+      "subtitle": "交易证据真实性扩展样本",
+      "summary": "属于交易证据真实性风险样本，但风险弱于 PR102 虫子异物。",
+      "image": "./assets/samples/plt05_pr105.png",
+      "result": {
+        "binary_label": "generated",
+        "platform_label": "PLT05",
+        "platform_label_text": "智谱GLM-Image / 清言相关文生图（PLT05）",
+        "generated_probability": 0.99691613,
+        "platform_probabilities": {
+          "PLT01": 0.01425552415715231,
+          "PLT02": 0.222081166069499,
+          "PLT03": 0.05531348589692058,
+          "PLT05": 0.7083498238764281
+        },
+        "signal_snapshot": [
+          {
+            "label": "原始尺寸",
+            "value": "1280 x 1280"
+          },
+          {
+            "label": "纵横比",
+            "value": "1.000"
+          },
+          {
+            "label": "像素规模",
+            "value": "1.638 MP"
+          },
+          {
+            "label": "文件大小",
+            "value": "2402.6 KB"
+          },
+          {
+            "label": "PNG",
+            "value": "是"
+          },
+          {
+            "label": "JPEG",
+            "value": "否"
+          },
+          {
+            "label": "WEBP",
+            "value": "否"
+          },
+          {
+            "label": "Alpha通道",
+            "value": "是"
+          },
+          {
+            "label": "EXIF",
+            "value": "无"
+          },
+          {
+            "label": "信息键数量",
+            "value": "0"
+          },
+          {
+            "label": "通道数",
+            "value": "4"
+          }
+        ],
+        "rationale": [
+          "当前模型先判断为 generated，概率为 99.69%；随后在已采样平台中做归因，当前给出的平台是 智谱GLM-Image / 清言相关文生图（PLT05）。",
+          "平台归因当前主要依赖文件层与导出链路信号，而不是纯语义内容。",
+          "这张图当前被模型重点利用的直接信号包括：PNG 导出、带 alpha 通道、尺寸 1280x1280。",
+          "这一样本更适合用来解释“交易证据真实性治理”的现实意义，而不是强调它比所有样本都危险。"
+        ]
+      }
+    },
+    {
+      "id": "real-control",
+      "title": "真实对照图 / 人像人物",
+      "subtitle": "开放场景真实摄影图",
+      "summary": "真实摄影图，用于说明 current binary 判别在真实图保护上的能力。",
+      "image": "./assets/samples/realctrl_person_01.jpg",
+      "result": {
+        "binary_label": "real",
+        "platform_label": "real",
+        "platform_label_text": "真实图片",
+        "generated_probability": 0.00125905,
+        "platform_probabilities": {
+          "PLT01": 0.11123410041033521,
+          "PLT02": 0.33131088452889973,
+          "PLT03": 0.5574150284202691,
+          "PLT05": 3.998664049595675e-05
+        },
+        "signal_snapshot": [
+          {
+            "label": "原始尺寸",
+            "value": "1600 x 1086"
+          },
+          {
+            "label": "纵横比",
+            "value": "1.473"
+          },
+          {
+            "label": "像素规模",
+            "value": "1.738 MP"
+          },
+          {
+            "label": "文件大小",
+            "value": "109.9 KB"
+          },
+          {
+            "label": "PNG",
+            "value": "否"
+          },
+          {
+            "label": "JPEG",
+            "value": "是"
+          },
+          {
+            "label": "WEBP",
+            "value": "否"
+          },
+          {
+            "label": "Alpha通道",
+            "value": "否"
+          },
+          {
+            "label": "EXIF",
+            "value": "有"
+          },
+          {
+            "label": "信息键数量",
+            "value": "9"
+          },
+          {
+            "label": "通道数",
+            "value": "3"
+          }
+        ],
+        "rationale": [
+          "当前模型先做 AI/real 二分类，这张图被判为 real，因此不会继续给出平台来源。",
+          "这类真实图的判定主要依赖 JPEG 导出、无 alpha 通道、保留 EXIF 与更多 info 字段等文件层信号。",
+          "它的作用不是说明模型已经解决所有真实图保护问题，而是展示当前演示版里的一个正向对照样本。"
+        ]
+      }
+    }
+  ]
+}
