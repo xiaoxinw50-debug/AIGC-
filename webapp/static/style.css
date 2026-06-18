@@ -90,15 +90,10 @@ body {
 }
 
 .overview-strip {
-  display: grid;
-  grid-template-columns: minmax(0, 1.6fr) minmax(300px, 0.95fr);
-  gap: 18px;
-  align-items: stretch;
   margin-bottom: 22px;
 }
 
-.overview-copy,
-.overview-stats {
+.overview-copy {
   background: rgba(255, 255, 255, 0.8);
   border: 1px solid rgba(151, 16, 13, 0.08);
   border-radius: 18px;
@@ -120,35 +115,6 @@ body {
   line-height: 1.82;
   color: var(--text-secondary);
   font-size: 14px;
-}
-
-.overview-stats {
-  display: grid;
-  grid-template-columns: repeat(3, minmax(0, 1fr));
-  gap: 12px;
-}
-
-.stat-card {
-  min-width: 0;
-  padding: 12px 14px;
-  border-radius: 14px;
-  background: linear-gradient(180deg, rgba(151, 16, 13, 0.07), rgba(255, 255, 255, 0.92));
-  border: 1px solid rgba(151, 16, 13, 0.1);
-  display: grid;
-  gap: 4px;
-  align-content: start;
-}
-
-.stat-k {
-  font-size: 24px;
-  line-height: 1;
-  font-weight: 800;
-  color: var(--pk-red);
-}
-
-.stat-v {
-  font-size: 12px;
-  color: var(--text-secondary);
 }
 
 .panel h2,
@@ -433,6 +399,21 @@ button:disabled {
   color: #2565b8;
 }
 
+.result-badge.is-uncertain {
+  background: rgba(244, 200, 105, 0.22);
+  color: #9a5a00;
+}
+
+.threshold-note {
+  padding: 10px 12px;
+  border-radius: 12px;
+  background: rgba(244, 200, 105, 0.14);
+  border: 1px solid rgba(154, 90, 0, 0.12);
+  color: rgba(43, 27, 24, 0.76);
+  line-height: 1.65;
+  font-size: 13px;
+}
+
 .result-metrics {
   display: grid;
   grid-template-columns: 1fr 1fr;
@@ -692,9 +673,6 @@ code {
       "rationale rationale";
   }
 
-  .overview-stats {
-    grid-template-columns: repeat(3, minmax(0, 1fr));
-  }
 }
 
 @media (max-width: 980px) {
@@ -725,10 +703,6 @@ code {
 
   .top-meta {
     justify-content: flex-start;
-  }
-
-  .overview-stats {
-    grid-template-columns: 1fr;
   }
 
   .cue-panel {

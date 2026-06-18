@@ -19,6 +19,8 @@ BINARY_BUNDLE = MODEL_DIR / "binary_model_bundle.joblib"
 PLATFORM_BUNDLE = MODEL_DIR / "platform_model_bundle.joblib"
 BINARY_TOP = MODEL_DIR / "binary_top_features.csv"
 PLATFORM_TOP = MODEL_DIR / "platform_top_features.csv"
+GENERATED_THRESHOLD = float(os.environ.get("AIGC_GENERATED_THRESHOLD", "0.75"))
+REAL_THRESHOLD = float(os.environ.get("AIGC_REAL_THRESHOLD", "0.35"))
 
 app = Flask(__name__, template_folder=str(ROOT / "webapp" / "templates"), static_folder=str(ROOT / "webapp" / "static"))
 app.config["MAX_CONTENT_LENGTH"] = 16 * 1024 * 1024
@@ -93,6 +95,7 @@ def platform_label_text(platform_id: str) -> str:
         "PLT03": "即梦AI / 字节系文生图（PLT03）",
         "PLT05": "智谱GLM-Image / 清言相关文生图（PLT05）",
         "real": "真实图片",
+        "uncertain": "需人工复核",
     }
     return mapping.get(platform_id, platform_id)
 
@@ -117,12 +120,19 @@ def build_rationale(prediction: dict) -> list[str]:
     lines: list[str] = []
     snap = prediction["feature_snapshot"]
     if prediction["pred_binary_label"] == "real":
-        lines.append("当前模型先做 AI/real 二分类，这张图被判为 real，因此不会继续给出平台来源。")
+        lines.append(
+            f"当前模型先做 AI/real 二分类，AI 生成概率为 {prediction['pred_prob_generated']:.4f}，低于真实图阈值 {prediction['real_threshold']:.2f}，因此判为 real，不继续给出平台来源。"
+        )
+    elif prediction["pred_binary_label"] == "uncertain":
+        lines.append(
+            f"当前 AI 生成概率为 {prediction['pred_prob_generated']:.4f}，落在 {prediction['real_threshold']:.2f} 到 {prediction['generated_threshold']:.2f} 的复核区间内。系统不会把这类图片硬判为 AI，也不会继续做平台归因。"
+        )
+        lines.append("证件照、白底商品图、截图和压缩后的真实图容易呈现背景干净、留痕较少、尺寸规整等特征，当前版本将这类边界样本优先交给人工复核。")
     else:
         lines.append(
-            f"当前模型先判断为 generated，概率为 {prediction['pred_prob_generated']:.4f}；随后在已采样平台中做归因，当前给出的平台是 {platform_label_text(prediction['pred_final_label'])}。"
+            f"当前模型先判断为 generated，概率为 {prediction['pred_prob_generated']:.4f}，达到 AI 阈值 {prediction['generated_threshold']:.2f}；随后在已采样平台中做归因，当前给出的平台是 {platform_label_text(prediction['pred_final_label'])}。"
         )
-    lines.append("平台归因当前主要依赖文件层与导出链路信号，而不是纯语义内容。")
+    lines.append("系统当前主要依赖文件层与导出链路信号，并结合增强视觉统计特征，而不是只看图片语义内容。")
 
     signal_parts = []
     if snap["is_png"] >= 0.5:
@@ -137,7 +147,10 @@ def build_rationale(prediction: dict) -> list[str]:
         signal_parts.append(f"info 字段数 {int(snap['info_key_count'])}")
     signal_parts.append(f"尺寸 {int(snap['orig_width'])}x{int(snap['orig_height'])}")
     lines.append("这张图当前被模型重点利用的直接信号包括：" + "、".join(signal_parts) + "。")
-    lines.append("因此，这个平台归因结果应理解为当前采样平台导出特征下的归因原型，不应表述成开放世界稳定来源鉴定。")
+    if prediction["pred_binary_label"] == "generated":
+        lines.append("因此，这个平台归因结果应理解为当前采样平台导出特征下的归因原型，不应表述成开放世界稳定来源鉴定。")
+    else:
+        lines.append("因此，本次结果应理解为低成本初筛；真实证件照、证书照和白底商品图等边界样本仍应保留人工复核。")
     return lines
 
 
@@ -154,7 +167,15 @@ def index():
 
 @app.get("/api/health")
 def health():
-    return jsonify({"status": "ok"})
+    return jsonify(
+        {
+            "status": "ok",
+            "binary_model": str(BINARY_BUNDLE.relative_to(ROOT)),
+            "platform_model": str(PLATFORM_BUNDLE.relative_to(ROOT)),
+            "generated_threshold": GENERATED_THRESHOLD,
+            "real_threshold": REAL_THRESHOLD,
+        }
+    )
 
 
 @app.post("/api/predict")
@@ -181,7 +202,13 @@ def predict_api():
         with tempfile.NamedTemporaryFile(delete=False, suffix=suffix) as tmp:
             tmp.write(raw)
             temp_path = Path(tmp.name)
-        prediction = predict_one(temp_path, binary_bundle, platform_bundle)
+        prediction = predict_one(
+            temp_path,
+            binary_bundle,
+            platform_bundle,
+            generated_threshold=GENERATED_THRESHOLD,
+            real_threshold=REAL_THRESHOLD,
+        )
     finally:
         if temp_path and temp_path.exists():
             os.unlink(temp_path)
@@ -194,12 +221,22 @@ def predict_api():
             "status": "ok",
             "result": {
                 "binary_label": prediction["pred_binary_label"],
+                "decision_status": prediction["decision_status"],
+                "decision_text": prediction["decision_text"],
                 "generated_probability": prediction["pred_prob_generated"],
                 "platform_label": prediction["pred_final_label"],
-                "platform_label_text": platform_label_text(prediction["pred_final_label"]),
-                "platform_probabilities": prediction["pred_platform_probabilities"],
+                "platform_label_text": platform_label_text(prediction["pred_final_label"])
+                if prediction["pred_binary_label"] == "generated"
+                else prediction["decision_text"],
+                "platform_probabilities": prediction["pred_platform_probabilities"]
+                if prediction["pred_binary_label"] == "generated"
+                else {},
                 "signal_snapshot": signal_snapshot,
                 "rationale": rationale,
+                "thresholds": {
+                    "real": REAL_THRESHOLD,
+                    "generated": GENERATED_THRESHOLD,
+                },
             },
             "global_binary_features": GLOBAL_BINARY_FEATURES,
             "global_platform_features": GLOBAL_PLATFORM_FEATURES,

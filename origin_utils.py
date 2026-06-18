@@ -13,9 +13,12 @@ def load_bundle(path: Path) -> dict[str, Any]:
     return joblib.load(path)
 
 
-def generated_prob(model: Any, x: np.ndarray, generated_label: str) -> float:
+def generated_prob(model: Any, x: np.ndarray, generated_label: Any) -> float:
     classes = list(model.classes_)
-    idx = classes.index(generated_label)
+    if generated_label in classes:
+        idx = classes.index(generated_label)
+    else:
+        idx = [str(label) for label in classes].index(str(generated_label))
     return float(model.predict_proba(x)[0][idx])
 
 
@@ -25,27 +28,67 @@ def multiclass_probs(model: Any, x: np.ndarray) -> dict[str, float]:
     return {str(label): float(prob) for label, prob in zip(classes, probs)}
 
 
-def predict_one(image_path: Path, binary_bundle: dict[str, Any], platform_bundle: dict[str, Any]) -> dict[str, Any]:
-    feature_mode = str(binary_bundle["feature_mode"])
-    feature_names = list(binary_bundle["feature_names"])
+def normalize_binary_label(value: Any, real_label: Any, generated_label: Any) -> str:
+    if value == generated_label or str(value) == str(generated_label):
+        return "generated"
+    if value == real_label or str(value) == str(real_label):
+        return "real"
+    return str(value)
+
+
+def matrix_for_bundle(image_path: Path, bundle: dict[str, Any]) -> tuple[np.ndarray, dict[str, Any]]:
+    feature_mode = str(bundle["feature_mode"])
+    names = list(bundle["feature_names"])
     feats = compute_image_features(image_path, mode=feature_mode)
-    x = np.asarray([[float(feats[name]) for name in feature_names]], dtype="float32")
+    x = np.asarray([[float(feats[name]) for name in names]], dtype="float32")
     x = np.nan_to_num(x, nan=0.0, posinf=0.0, neginf=0.0)
+    return x, feats
+
+
+def predict_one(
+    image_path: Path,
+    binary_bundle: dict[str, Any],
+    platform_bundle: dict[str, Any],
+    *,
+    generated_threshold: float = 0.75,
+    real_threshold: float = 0.35,
+) -> dict[str, Any]:
+    x_binary, feats = matrix_for_bundle(image_path, binary_bundle)
+    x_platform, _ = matrix_for_bundle(image_path, platform_bundle)
 
     binary_model = binary_bundle["model"]
     platform_model = platform_bundle["model"]
-    generated_label = str(binary_bundle["generated_label"])
-    real_label = str(binary_bundle["real_label"])
+    generated_label = binary_bundle["generated_label"]
+    real_label = binary_bundle["real_label"]
 
-    binary_pred = str(binary_model.predict(x)[0])
-    platform_pred = str(platform_model.predict(x)[0])
-    prob_generated = generated_prob(binary_model, x, generated_label)
-    platform_prob_map = multiclass_probs(platform_model, x)
-    final_pred = real_label if binary_pred == real_label else platform_pred
+    raw_binary_pred = binary_model.predict(x_binary)[0]
+    prob_generated = generated_prob(binary_model, x_binary, generated_label)
+    if prob_generated >= generated_threshold:
+        binary_pred = "generated"
+        decision_status = "generated"
+        decision_text = "AI 生成"
+    elif prob_generated <= real_threshold:
+        binary_pred = "real"
+        decision_status = "real"
+        decision_text = "真实图片"
+    else:
+        binary_pred = "uncertain"
+        decision_status = "uncertain"
+        decision_text = "需人工复核"
+
+    raw_model_label = normalize_binary_label(raw_binary_pred, real_label, generated_label)
+    platform_pred = str(platform_model.predict(x_platform)[0])
+    platform_prob_map = multiclass_probs(platform_model, x_platform)
+    final_pred = platform_pred if binary_pred == "generated" else "real"
 
     return {
         "image_path": str(image_path),
-        "feature_mode": feature_mode,
+        "feature_mode": str(binary_bundle["feature_mode"]),
+        "binary_model_raw_label": raw_model_label,
+        "decision_status": decision_status,
+        "decision_text": decision_text,
+        "generated_threshold": generated_threshold,
+        "real_threshold": real_threshold,
         "pred_binary_label": binary_pred,
         "pred_prob_generated": round(prob_generated, 8),
         "pred_platform_if_generated": platform_pred,
