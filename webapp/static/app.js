@@ -23,7 +23,8 @@ const PLATFORM_NAME_MAP = {
   PLT02: '通义千问',
   PLT03: '即梦AI / 字节系文生图',
   PLT05: '智谱GLM-Image / 清言相关文生图',
-  real: '真实图片'
+  real: '真实图片',
+  uncertain: '需人工复核'
 };
 let lastBatchResults = [];
 let lastSingleResult = null;
@@ -84,7 +85,7 @@ function renderHistory() {
         <div class="history-item">
           <div>
             <strong>${row.file_name}</strong>
-            <span>${row.binary_label === 'real' ? '真实图片' : row.platform_label_text}</span>
+            <span>${row.decision_text || (row.binary_label === 'real' ? '真实图片' : row.platform_label_text)}</span>
           </div>
           <div class="history-meta">
             <span>${row.generated_probability_pct}</span>
@@ -117,6 +118,8 @@ function toHistoryRecord(fileName, result) {
   return {
     file_name: fileName,
     binary_label: result.binary_label,
+    decision_status: result.decision_status,
+    decision_text: result.decision_text,
     platform_label: result.platform_label,
     platform_label_text: result.platform_label_text,
     generated_probability: result.generated_probability,
@@ -148,6 +151,12 @@ function renderSingleReportHtml(fileName, result) {
       </tr>
     `)
     .join('');
+  const platformBlock = platformRows
+    ? `<table>
+          <thead><tr><th>标签</th><th>概率</th></tr></thead>
+          <tbody>${platformRows}</tbody>
+        </table>`
+    : '<p class="empty">当前未进入平台归因。只有 AI 生成概率达到阈值时，系统才输出四平台概率。</p>';
   const signalRows = result.signal_snapshot
     .map(item => `
       <tr>
@@ -187,7 +196,7 @@ function renderSingleReportHtml(fileName, result) {
       <h1>AI 图片识别与平台归因单张报告</h1>
       <p>文件名：${escapeHtml(fileName)}</p>
       <div class="meta">
-        <span class="pill">AI/real：${escapeHtml(result.binary_label)}</span>
+        <span class="pill">AI/real：${escapeHtml(result.decision_text || result.binary_label)}</span>
         <span class="pill">最终标签：${escapeHtml(result.platform_label_text)}</span>
         <span class="pill">AI 概率：${(result.generated_probability * 100).toFixed(2)}%</span>
         <span class="pill">导出时间：${escapeHtml(new Date().toLocaleString('zh-CN'))}</span>
@@ -196,10 +205,7 @@ function renderSingleReportHtml(fileName, result) {
     <section class="grid">
       <article class="card">
         <h2>平台概率</h2>
-        <table>
-          <thead><tr><th>标签</th><th>概率</th></tr></thead>
-          <tbody>${platformRows}</tbody>
-        </table>
+        ${platformBlock}
       </article>
       <article class="card">
         <h2>文件层信号</h2>
@@ -281,9 +287,14 @@ if (isStaticPreviewMode()) {
 function renderResult(result) {
   const generatedPct = (result.generated_probability * 100).toFixed(2);
   const isReal = result.binary_label === 'real';
+  const isUncertain = result.binary_label === 'uncertain';
+  const badgeText = result.decision_text || (isReal ? '真实图片' : 'AI 生成');
+  const thresholdText = result.thresholds
+    ? `真实 ≤ ${(result.thresholds.real * 100).toFixed(0)}%，AI ≥ ${(result.thresholds.generated * 100).toFixed(0)}%`
+    : '';
   resultSummary.innerHTML = `
     <div class="result-card">
-      <span class="result-badge ${isReal ? 'is-real' : ''}">${isReal ? '真实图片' : 'AI 生成'}</span>
+      <span class="result-badge ${isReal ? 'is-real' : ''} ${isUncertain ? 'is-uncertain' : ''}">${escapeHtml(badgeText)}</span>
       <div class="result-metrics">
         <div class="metric-tile">
           <span>AI 生成概率</span>
@@ -294,11 +305,13 @@ function renderResult(result) {
           <strong>${result.platform_label_text}</strong>
         </div>
       </div>
+      ${thresholdText ? `<div class="threshold-note">当前采用保守阈值：${thresholdText}；中间区间进入人工复核。</div>` : ''}
       <div><strong>平台来源：</strong>${escapeHtml(result.platform_label_text)}</div>
     </div>
   `;
 
-  const probabilityRows = Object.entries(result.platform_probabilities)
+  const probabilityEntries = Object.entries(result.platform_probabilities || {});
+  const probabilityRows = probabilityEntries
     .sort((a, b) => b[1] - a[1])
     .map(([label, prob]) => `
       <div class="prob-row">
@@ -307,7 +320,7 @@ function renderResult(result) {
       </div>
     `)
     .join('');
-  platformProbabilities.innerHTML = probabilityRows;
+  platformProbabilities.innerHTML = probabilityRows || '<div class="empty">当前未进入平台归因。只有 AI 生成概率达到阈值时，系统才输出四平台概率。</div>';
 
   signalSnapshot.innerHTML = `
     <div class="signal-list">
@@ -356,7 +369,7 @@ function renderBatchResults() {
           ${lastBatchResults.map(row => `
             <tr>
               <td>${row.file_name}</td>
-              <td>${row.binary_label}</td>
+              <td>${row.decision_text || row.binary_label}</td>
               <td>${row.platform_label_text}</td>
               <td>${row.generated_probability_pct}</td>
             </tr>
@@ -461,7 +474,7 @@ exportBatchCsvBtn.addEventListener('click', () => {
     setStatus('没有可导出的批量结果');
     return;
   }
-  const header = ['file_name', 'binary_label', 'platform_label', 'platform_label_text', 'generated_probability_pct'];
+  const header = ['file_name', 'binary_label', 'decision_status', 'decision_text', 'platform_label', 'platform_label_text', 'generated_probability_pct'];
   const lines = [
     header.join(','),
     ...lastBatchResults.map(row => header.map(key => `"${String(row[key] ?? '').replaceAll('"', '""')}"`).join(','))

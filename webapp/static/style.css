@@ -399,6 +399,21 @@ button:disabled {
   color: #2565b8;
 }
 
+.result-badge.is-uncertain {
+  background: rgba(244, 200, 105, 0.22);
+  color: #9a5a00;
+}
+
+.threshold-note {
+  padding: 10px 12px;
+  border-radius: 12px;
+  background: rgba(244, 200, 105, 0.14);
+  border: 1px solid rgba(154, 90, 0, 0.12);
+  color: rgba(43, 27, 24, 0.76);
+  line-height: 1.65;
+  font-size: 13px;
+}
+
 .result-metrics {
   display: grid;
   grid-template-columns: 1fr 1fr;

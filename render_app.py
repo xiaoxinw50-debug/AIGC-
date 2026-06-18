@@ -135,7 +135,7 @@ HTML = """
   <main class="page">
     <section class="hero">
       <article class="panel">
-        <p class="eyebrow">AIGC 标识治理 · Live Inference Demo</p>
+        <p class="eyebrow">AIGC 标识治理 Live Inference Demo</p>
         <h1>AI 图片识别与平台归因</h1>
         <p>先判断图片是否为 AI 生成，再在已采样平台 <code>文心一言</code>、<code>通义千问</code>、<code>即梦AI</code>、<code>智谱 GLM-Image</code> 中做来源归因。当前归因依据以文件层留痕为主，而非纯内容语义。</p>
       </article>
