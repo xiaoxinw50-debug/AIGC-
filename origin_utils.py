@@ -79,7 +79,12 @@ def predict_one(
     raw_model_label = normalize_binary_label(raw_binary_pred, real_label, generated_label)
     platform_pred = str(platform_model.predict(x_platform)[0])
     platform_prob_map = multiclass_probs(platform_model, x_platform)
-    final_pred = platform_pred if binary_pred == "generated" else "real"
+    if binary_pred == "generated":
+        final_pred = platform_pred
+    elif binary_pred == "uncertain":
+        final_pred = "uncertain"
+    else:
+        final_pred = "real"
 
     return {
         "image_path": str(image_path),

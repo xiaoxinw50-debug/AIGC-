@@ -10,13 +10,14 @@
   <main class="page">
     <header class="top-bar glass">
       <div class="brand">
-        <p class="eyebrow">AIGC 标识治理项目 · 文件层留痕原型</p>
-        <h1>AI 图片识别与平台归因</h1>
+        <p class="eyebrow">AIGC 标识治理项目 文件层留痕原型</p>
+        <h1><span class="title-part">AI 图片识别</span><span class="title-part">与平台归因</span></h1>
+        <p class="hero-subtitle">低误伤优先的 AIGC 图片初筛工具：先判断 AI / real，再在高置信 AI 图中做四平台来源归因。</p>
       </div>
       <div class="top-meta">
-        <div class="meta-pill">两阶段模型</div>
-        <div class="meta-pill">四平台归因</div>
-        <div class="meta-pill">文件层优先解释</div>
+        <div class="meta-pill">网页 v2 模型</div>
+        <div class="meta-pill">真实 ≤45%</div>
+        <div class="meta-pill">AI ≥75%</div>
       </div>
     </header>
 
@@ -28,19 +29,42 @@
           中做来源归因。当前归因主要依据导出尺寸、图像格式、EXIF、alpha 通道和信息字段差异，而不是单纯内容风格。
         </p>
       </div>
-      <div class="overview-stats">
+      <div class="overview-stats" aria-label="模型校准摘要">
         <div class="stat-card">
-          <span class="stat-k">147</span>
-          <span class="stat-v">混合样本</span>
+          <span class="stat-k">低误伤</span>
+          <span class="stat-v">网页端采用保守阈值，优先避免把真实图直接判为 AI</span>
         </div>
         <div class="stat-card">
-          <span class="stat-k">126</span>
-          <span class="stat-v">平台生成图</span>
+          <span class="stat-k">复核区</span>
+          <span class="stat-v">边界图片进入人工复核，不在页面上强行给结论</span>
         </div>
         <div class="stat-card">
-          <span class="stat-k">4</span>
-          <span class="stat-v">已采样平台</span>
+          <span class="stat-k">可解释</span>
+          <span class="stat-v">结果同步展示格式、尺寸、EXIF 与信息字段等文件层证据</span>
         </div>
+      </div>
+    </section>
+
+    <section class="workflow-strip" aria-label="识别流程">
+      <div class="workflow-step">
+        <span>1</span>
+        <strong>上传图片</strong>
+        <p>支持单张和批量，自动读取格式、尺寸和文件层信息。</p>
+      </div>
+      <div class="workflow-step">
+        <span>2</span>
+        <strong>AI / real 初筛</strong>
+        <p>低概率判真实，高概率判 AI，中间进入复核区间。</p>
+      </div>
+      <div class="workflow-step">
+        <span>3</span>
+        <strong>平台归因</strong>
+        <p>只有高置信 AI 图才输出文心一言、通义千问、即梦AI、智谱 GLM-Image 概率。</p>
+      </div>
+      <div class="workflow-step">
+        <span>4</span>
+        <strong>导出证据</strong>
+        <p>可导出单张报告、批量 CSV 和本地识别历史。</p>
       </div>
     </section>
 
@@ -62,15 +86,19 @@
               <span>支持 PNG / JPEG / WEBP，可一次选择多张</span>
             </div>
           </div>
+          <div id="fileMeta" class="file-meta empty">尚未选择文件</div>
           <div class="upload-actions">
             <button id="predictBtn" type="button">识别当前图片</button>
             <button id="batchPredictBtn" type="button" class="secondary-btn">批量识别全部</button>
+          </div>
+          <div id="progressWrap" class="progress-wrap" aria-hidden="true">
+            <div id="progressBar" class="progress-bar"></div>
           </div>
           <div id="queueSummary" class="queue-summary">
             <div class="queue-chip">当前队列 0</div>
             <div class="queue-chip">待识别 0</div>
           </div>
-          <p id="statusText" class="status">等待上传</p>
+          <p id="statusText" class="status" aria-live="polite">等待上传</p>
         </div>
         <div class="preview-box">
           <div id="previewPlaceholder" class="preview-placeholder">
@@ -96,6 +124,7 @@
           <li>是否存在 alpha 通道</li>
           <li>EXIF 是否存在</li>
           <li>信息键数量与导出链路差异</li>
+          <li>边界样本进入复核，不直接给平台结论</li>
         </ol>
       </aside>
     </section>

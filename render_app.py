@@ -19,6 +19,8 @@ BINARY_BUNDLE = MODEL_DIR / "binary_model_bundle.joblib"
 PLATFORM_BUNDLE = MODEL_DIR / "platform_model_bundle.joblib"
 BINARY_TOP = MODEL_DIR / "binary_top_features.csv"
 PLATFORM_TOP = MODEL_DIR / "platform_top_features.csv"
+GENERATED_THRESHOLD = float(os.environ.get("AIGC_GENERATED_THRESHOLD", "0.75"))
+REAL_THRESHOLD = float(os.environ.get("AIGC_REAL_THRESHOLD", "0.45"))
 
 app = Flask(__name__)
 app.config["MAX_CONTENT_LENGTH"] = 16 * 1024 * 1024
@@ -69,6 +71,7 @@ def platform_label_text(platform_id: str) -> str:
         "PLT03": "即梦AI / 字节系文生图",
         "PLT05": "智谱GLM-Image / 清言相关文生图",
         "real": "真实图片",
+        "uncertain": "需人工复核",
     }
     return mapping.get(platform_id, platform_id)
 
@@ -135,7 +138,7 @@ HTML = """
   <main class="page">
     <section class="hero">
       <article class="panel">
-        <p class="eyebrow">AIGC 标识治理 · Live Inference Demo</p>
+        <p class="eyebrow">AIGC 标识治理 Live Inference Demo</p>
         <h1>AI 图片识别与平台归因</h1>
         <p>先判断图片是否为 AI 生成，再在已采样平台 <code>文心一言</code>、<code>通义千问</code>、<code>即梦AI</code>、<code>智谱 GLM-Image</code> 中做来源归因。当前归因依据以文件层留痕为主，而非纯内容语义。</p>
       </article>
@@ -318,7 +321,13 @@ def predict_api():
         with tempfile.NamedTemporaryFile(delete=False, suffix=suffix) as tmp:
             tmp.write(raw)
             temp_path = Path(tmp.name)
-        prediction = predict_one(temp_path, binary_bundle, platform_bundle)
+        prediction = predict_one(
+            temp_path,
+            binary_bundle,
+            platform_bundle,
+            generated_threshold=GENERATED_THRESHOLD,
+            real_threshold=REAL_THRESHOLD,
+        )
     finally:
         if temp_path and temp_path.exists():
             os.unlink(temp_path)

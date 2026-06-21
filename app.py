@@ -20,7 +20,7 @@ PLATFORM_BUNDLE = MODEL_DIR / "platform_model_bundle.joblib"
 BINARY_TOP = MODEL_DIR / "binary_top_features.csv"
 PLATFORM_TOP = MODEL_DIR / "platform_top_features.csv"
 GENERATED_THRESHOLD = float(os.environ.get("AIGC_GENERATED_THRESHOLD", "0.75"))
-REAL_THRESHOLD = float(os.environ.get("AIGC_REAL_THRESHOLD", "0.35"))
+REAL_THRESHOLD = float(os.environ.get("AIGC_REAL_THRESHOLD", "0.45"))
 
 app = Flask(__name__, template_folder=str(ROOT / "webapp" / "templates"), static_folder=str(ROOT / "webapp" / "static"))
 app.config["MAX_CONTENT_LENGTH"] = 16 * 1024 * 1024
