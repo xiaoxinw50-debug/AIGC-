@@ -19,14 +19,84 @@ BINARY_BUNDLE = MODEL_DIR / "binary_model_bundle.joblib"
 PLATFORM_BUNDLE = MODEL_DIR / "platform_model_bundle.joblib"
 BINARY_TOP = MODEL_DIR / "binary_top_features.csv"
 PLATFORM_TOP = MODEL_DIR / "platform_top_features.csv"
-GENERATED_THRESHOLD = float(os.environ.get("AIGC_GENERATED_THRESHOLD", "0.75"))
-REAL_THRESHOLD = float(os.environ.get("AIGC_REAL_THRESHOLD", "0.45"))
+THRESHOLD_PROFILES_CSV = MODEL_DIR / "web_threshold_profiles_v4.csv"
 
 app = Flask(__name__, template_folder=str(ROOT / "webapp" / "templates"), static_folder=str(ROOT / "webapp" / "static"))
 app.config["MAX_CONTENT_LENGTH"] = 16 * 1024 * 1024
 
 binary_bundle = load_bundle(BINARY_BUNDLE)
 platform_bundle = load_bundle(PLATFORM_BUNDLE)
+
+PROFILE_UI_NOTES = {
+    "operational_low_false_ai": "默认展示档：优先避免真实图被误判为 AI，复核负担最低。",
+    "balanced_review": "均衡复核档：适合课程演示和平台审核，把更多边界样本交给人工复核。",
+    "high_risk_after_sales_review": "售后高风险档：适合异物、瑕疵、仅退款纠纷线索初筛，宁可多复核也不轻易放过可疑图。",
+}
+
+
+def _float_value(row: dict[str, str], key: str, default: float = 0.0) -> float:
+    try:
+        return float(row.get(key, default))
+    except (TypeError, ValueError):
+        return default
+
+
+def load_policy_profiles() -> list[dict[str, float | str]]:
+    profiles: list[dict[str, float | str]] = []
+    if THRESHOLD_PROFILES_CSV.exists():
+        with THRESHOLD_PROFILES_CSV.open("r", encoding="utf-8-sig", newline="") as f:
+            for row in csv.DictReader(f):
+                profile_id = row.get("profile_id", "")
+                profiles.append(
+                    {
+                        "profile_id": profile_id,
+                        "profile_name": row.get("profile_name", profile_id),
+                        "selection_note": row.get("selection_note", ""),
+                        "ui_note": PROFILE_UI_NOTES.get(profile_id, "当前模型阈值策略。"),
+                        "real_threshold": _float_value(row, "real_threshold", 0.45),
+                        "generated_threshold": _float_value(row, "generated_threshold", 0.75),
+                        "test_real_false_ai_rate": _float_value(row, "test_real_false_ai_rate"),
+                        "test_generated_auto_recall": _float_value(row, "test_generated_auto_recall"),
+                        "test_generated_risk_capture_rate": _float_value(row, "test_generated_risk_capture_rate"),
+                        "test_review_rate": _float_value(row, "test_review_rate"),
+                    }
+                )
+    if not profiles:
+        profiles.append(
+            {
+                "profile_id": "operational_low_false_ai",
+                "profile_name": "运营低误伤",
+                "selection_note": "fallback",
+                "ui_note": PROFILE_UI_NOTES["operational_low_false_ai"],
+                "real_threshold": float(binary_bundle.get("recommended_real_threshold", 0.45)),
+                "generated_threshold": float(binary_bundle.get("recommended_generated_threshold", 0.75)),
+                "test_real_false_ai_rate": 0.0,
+                "test_generated_auto_recall": 0.0,
+                "test_generated_risk_capture_rate": 0.0,
+                "test_review_rate": 0.0,
+            }
+        )
+    return profiles
+
+
+POLICY_PROFILES = load_policy_profiles()
+POLICY_BY_ID = {str(profile["profile_id"]): profile for profile in POLICY_PROFILES}
+DEFAULT_POLICY_ID = os.environ.get("AIGC_POLICY_PROFILE", "operational_low_false_ai")
+if DEFAULT_POLICY_ID not in POLICY_BY_ID:
+    DEFAULT_POLICY_ID = str(POLICY_PROFILES[0]["profile_id"])
+
+if "AIGC_GENERATED_THRESHOLD" in os.environ:
+    POLICY_BY_ID[DEFAULT_POLICY_ID]["generated_threshold"] = float(os.environ["AIGC_GENERATED_THRESHOLD"])
+if "AIGC_REAL_THRESHOLD" in os.environ:
+    POLICY_BY_ID[DEFAULT_POLICY_ID]["real_threshold"] = float(os.environ["AIGC_REAL_THRESHOLD"])
+GENERATED_THRESHOLD = float(POLICY_BY_ID[DEFAULT_POLICY_ID]["generated_threshold"])
+REAL_THRESHOLD = float(POLICY_BY_ID[DEFAULT_POLICY_ID]["real_threshold"])
+
+
+def select_policy_profile(profile_id: str | None) -> dict[str, float | str]:
+    if profile_id and profile_id in POLICY_BY_ID:
+        return POLICY_BY_ID[profile_id]
+    return POLICY_BY_ID[DEFAULT_POLICY_ID]
 
 
 def read_top_features(path: Path, top_n: int = 8) -> list[dict[str, str]]:
@@ -119,6 +189,11 @@ def format_signal_snapshot(snapshot: dict[str, float]) -> list[dict[str, str]]:
 def build_rationale(prediction: dict) -> list[str]:
     lines: list[str] = []
     snap = prediction["feature_snapshot"]
+    profile = prediction.get("policy_profile", {})
+    if profile:
+        lines.append(
+            f"当前使用{profile.get('profile_name', '默认')}策略：真实阈值 {prediction['real_threshold']:.2f}，AI 阈值 {prediction['generated_threshold']:.2f}。{profile.get('ui_note', '')}"
+        )
     if prediction["pred_binary_label"] == "real":
         lines.append(
             f"当前模型先做 AI/real 二分类，AI 生成概率为 {prediction['pred_prob_generated']:.4f}，低于真实图阈值 {prediction['real_threshold']:.2f}，因此判为 real，不继续给出平台来源。"
@@ -162,6 +237,8 @@ def index():
         global_binary_features_more=GLOBAL_BINARY_FEATURES[4:],
         global_platform_features=GLOBAL_PLATFORM_FEATURES[:4],
         global_platform_features_more=GLOBAL_PLATFORM_FEATURES[4:],
+        policy_profiles=POLICY_PROFILES,
+        default_policy_id=DEFAULT_POLICY_ID,
     )
 
 
@@ -174,6 +251,8 @@ def health():
             "platform_model": str(PLATFORM_BUNDLE.relative_to(ROOT)),
             "generated_threshold": GENERATED_THRESHOLD,
             "real_threshold": REAL_THRESHOLD,
+            "default_policy_profile": DEFAULT_POLICY_ID,
+            "policy_profiles": POLICY_PROFILES,
         }
     )
 
@@ -202,13 +281,15 @@ def predict_api():
         with tempfile.NamedTemporaryFile(delete=False, suffix=suffix) as tmp:
             tmp.write(raw)
             temp_path = Path(tmp.name)
+        policy = select_policy_profile(request.form.get("policy_profile"))
         prediction = predict_one(
             temp_path,
             binary_bundle,
             platform_bundle,
-            generated_threshold=GENERATED_THRESHOLD,
-            real_threshold=REAL_THRESHOLD,
+            generated_threshold=float(policy["generated_threshold"]),
+            real_threshold=float(policy["real_threshold"]),
         )
+        prediction["policy_profile"] = policy
     finally:
         if temp_path and temp_path.exists():
             os.unlink(temp_path)
@@ -234,8 +315,17 @@ def predict_api():
                 "signal_snapshot": signal_snapshot,
                 "rationale": rationale,
                 "thresholds": {
-                    "real": REAL_THRESHOLD,
-                    "generated": GENERATED_THRESHOLD,
+                    "real": prediction["real_threshold"],
+                    "generated": prediction["generated_threshold"],
+                },
+                "policy_profile_id": prediction["policy_profile"]["profile_id"],
+                "policy_profile_name": prediction["policy_profile"]["profile_name"],
+                "policy_profile_note": prediction["policy_profile"]["ui_note"],
+                "policy_metrics": {
+                    "test_real_false_ai_rate": prediction["policy_profile"].get("test_real_false_ai_rate"),
+                    "test_generated_auto_recall": prediction["policy_profile"].get("test_generated_auto_recall"),
+                    "test_generated_risk_capture_rate": prediction["policy_profile"].get("test_generated_risk_capture_rate"),
+                    "test_review_rate": prediction["policy_profile"].get("test_review_rate"),
                 },
             },
             "global_binary_features": GLOBAL_BINARY_FEATURES,
