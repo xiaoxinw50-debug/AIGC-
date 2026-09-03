@@ -19,6 +19,9 @@ const dropzone = document.querySelector('.upload-dropzone');
 const fileMeta = document.getElementById('fileMeta');
 const progressWrap = document.getElementById('progressWrap');
 const progressBar = document.getElementById('progressBar');
+const policyInputs = Array.from(document.querySelectorAll('input[name="policyProfile"]'));
+const policyMetricPreview = document.getElementById('policyMetricPreview');
+const policyProfileDataEl = document.getElementById('policyProfileData');
 
 const HISTORY_KEY = 'aigc-trace-history-v1';
 const MAX_FILE_SIZE = 16 * 1024 * 1024;
@@ -32,10 +35,20 @@ const PLATFORM_NAME_MAP = {
   real: '真实图片',
   uncertain: '需人工复核'
 };
+const policyProfileData = parsePolicyProfiles();
 
 let lastBatchResults = [];
 let lastSingleResult = null;
 let lastSingleFileName = '';
+
+function parsePolicyProfiles() {
+  if (!policyProfileDataEl?.textContent) return [];
+  try {
+    return JSON.parse(policyProfileDataEl.textContent);
+  } catch {
+    return [];
+  }
+}
 
 function getSelectedFiles() {
   return Array.from(fileInput.files || []);
@@ -71,6 +84,78 @@ function setStatus(text, tone = 'neutral') {
   statusText.dataset.tone = tone;
 }
 
+function getSelectedPolicyProfile() {
+  return document.querySelector('input[name="policyProfile"]:checked')?.value || 'operational_low_false_ai';
+}
+
+function getSelectedPolicyName() {
+  const selected = document.querySelector('input[name="policyProfile"]:checked');
+  return selected?.closest('.policy-option')?.querySelector('strong')?.textContent || '默认策略';
+}
+
+function getSelectedPolicyData() {
+  const selectedId = getSelectedPolicyProfile();
+  return policyProfileData.find(profile => String(profile.profile_id) === selectedId) || policyProfileData[0] || null;
+}
+
+function asMetricPercent(value, digits = 2) {
+  const number = Number(value);
+  if (!Number.isFinite(number)) return '--';
+  return asPercent(number, digits);
+}
+
+function thresholdPercent(value) {
+  const number = Number(value);
+  if (!Number.isFinite(number)) return '--';
+  return `${(number * 100).toFixed(0)}%`;
+}
+
+function policyUseCase(profileId) {
+  const mapping = {
+    operational_low_false_ai: '适合普通展示和真实图保护，降低证件照、白底商品图被误判为 AI 的风险。',
+    balanced_review: '适合课程演示和平台审核，把边界图片留在复核区，便于说明模型如何取舍。',
+    high_risk_after_sales_review: '适合售后异物、瑕疵和仅退款纠纷的风险初筛，目标是提高可疑 AI 图捕获率。'
+  };
+  return mapping[profileId] || '当前策略用于在低误伤、自动命中和人工复核之间做取舍。';
+}
+
+function renderPolicyMetricPreview() {
+  if (!policyMetricPreview) return;
+  const profile = getSelectedPolicyData();
+  if (!profile) {
+    policyMetricPreview.innerHTML = '';
+    return;
+  }
+  policyMetricPreview.innerHTML = `
+    <div class="policy-preview-head">
+      <div>
+        <strong>${escapeHtml(profile.profile_name)}</strong>
+        <span>${escapeHtml(policyUseCase(profile.profile_id))}</span>
+      </div>
+      <div class="policy-threshold-pill">
+        真实 ≤ ${thresholdPercent(profile.real_threshold)}，AI ≥ ${thresholdPercent(profile.generated_threshold)}
+      </div>
+    </div>
+    <div class="policy-metric-grid">
+      <div class="policy-metric">
+        <span>真实图误判 AI</span>
+        <strong>${asMetricPercent(profile.test_real_false_ai_rate)}</strong>
+        <small>越低越适合真实图保护</small>
+      </div>
+      <div class="policy-metric">
+        <span>生成图风险捕获</span>
+        <strong>${asMetricPercent(profile.test_generated_risk_capture_rate)}</strong>
+        <small>进入 AI 区或复核区的比例</small>
+      </div>
+      <div class="policy-metric">
+        <span>生成图自动命中</span>
+        <strong>${asMetricPercent(profile.test_generated_auto_recall)}</strong>
+        <small>直接进入 AI 区的比例</small>
+      </div>
+    </div>
+  `;
+}
+
 function isStaticPreviewMode() {
   return window.location.protocol === 'file:';
 }
@@ -89,11 +174,20 @@ function setLoading(isLoading) {
   batchPredictBtn.textContent = isLoading ? '处理中...' : '批量识别全部';
 }
 
+function emptyState(title, body) {
+  return `
+    <div class="empty-state">
+      <strong>${escapeHtml(title)}</strong>
+      <span>${escapeHtml(body)}</span>
+    </div>
+  `;
+}
+
 function clearResult() {
-  resultSummary.innerHTML = '尚未识别';
-  platformProbabilities.innerHTML = '尚未识别';
-  signalSnapshot.innerHTML = '尚未识别';
-  rationaleBox.innerHTML = '尚未识别';
+  resultSummary.innerHTML = emptyState('尚未识别', '上传图片后，这里会显示 AI / real 结论、阈值区间和审核建议。');
+  platformProbabilities.innerHTML = emptyState('等待 AI 高置信结果', '只有进入 AI 区的图片才展示四平台概率。');
+  signalSnapshot.innerHTML = emptyState('等待读取文件层信号', '系统会提取格式、尺寸、EXIF、alpha 通道和 info 字段。');
+  rationaleBox.innerHTML = emptyState('等待生成解释', '解释会说明模型依据、边界样本处理和平台归因限制。');
   lastSingleResult = null;
   lastSingleFileName = '';
   setProgress(0);
@@ -194,6 +288,55 @@ function decisionAdvice(result) {
   };
 }
 
+function resultUsageGuide(result) {
+  if (result.binary_label === 'real') {
+    return [
+      {
+        title: '页面交付',
+        body: '输出为真实图低风险，不继续给平台来源，避免把普通照片误当成 AI 图。'
+      },
+      {
+        title: '审核动作',
+        body: '保留原图文件、订单上下文和沟通记录。若场景敏感，再要求上传原始文件。'
+      },
+      {
+        title: '对外说明',
+        body: '可以说明当前未发现强 AI 生成留痕，本次不按 AI 假图处理。'
+      }
+    ];
+  }
+  if (result.binary_label === 'uncertain') {
+    return [
+      {
+        title: '页面交付',
+        body: '输出为人工复核，不给平台归因，避免把边界图包装成确定结论。'
+      },
+      {
+        title: '审核动作',
+        body: '要求补充原始图片、多角度照片、拍摄时间或订单证据，再由人工复核。'
+      },
+      {
+        title: '对外说明',
+        body: '可以说明图片特征处在模型复核区，需要补充材料后再继续判断。'
+      }
+    ];
+  }
+  return [
+    {
+      title: '页面交付',
+      body: `输出为高置信 AI 生成，并在已采样平台中给出 ${result.platform_label_text || '当前最高概率平台'}。`
+    },
+    {
+      title: '审核动作',
+      body: '查看平台概率和文件层信号，结合原始文件、订单链路和多角度图片做最终核验。'
+    },
+    {
+      title: '对外说明',
+      body: '可以说明系统发现较强 AI 生成留痕，但平台归因是已采样范围内的技术线索，不是开放世界定责。'
+    }
+  ];
+}
+
 function decisionLabel(row) {
   return row.decision_text || (row.binary_label === 'real' ? '真实图片' : row.binary_label === 'uncertain' ? '需人工复核' : 'AI 生成');
 }
@@ -201,7 +344,7 @@ function decisionLabel(row) {
 function renderHistory() {
   const rows = readHistory();
   if (!rows.length) {
-    historyList.innerHTML = '尚无历史记录';
+    historyList.innerHTML = emptyState('尚无历史记录', '完成识别后会在本地浏览器保存最近结果，便于课堂演示回看。');
     return;
   }
   historyList.innerHTML = `
@@ -242,6 +385,8 @@ function downloadText(filename, text, mimeType) {
 function toHistoryRecord(fileName, result) {
   return {
     file_name: fileName,
+    policy_profile_id: result.policy_profile_id,
+    policy_profile_name: result.policy_profile_name,
     binary_label: result.binary_label,
     decision_status: result.decision_status,
     decision_text: result.decision_text,
@@ -255,6 +400,14 @@ function toHistoryRecord(fileName, result) {
 
 function renderSingleReportHtml(fileName, result) {
   const advice = decisionAdvice(result);
+  const usageRows = resultUsageGuide(result)
+    .map(item => `
+      <tr>
+        <td>${escapeHtml(item.title)}</td>
+        <td>${escapeHtml(item.body)}</td>
+      </tr>
+    `)
+    .join('');
   const platformRows = Object.entries(result.platform_probabilities || {})
     .sort((a, b) => b[1] - a[1])
     .map(([label, prob]) => `
@@ -312,6 +465,7 @@ function renderSingleReportHtml(fileName, result) {
       <div class="meta">
         <span class="pill">AI / real：${escapeHtml(decisionLabel(result))}</span>
         <span class="pill">最终标签：${escapeHtml(result.platform_label_text)}</span>
+        <span class="pill">策略：${escapeHtml(result.policy_profile_name || getSelectedPolicyName())}</span>
         <span class="pill">AI 概率：${asPercent(result.generated_probability)}</span>
         <span class="pill">导出时间：${escapeHtml(new Date().toLocaleString('zh-CN'))}</span>
       </div>
@@ -319,6 +473,13 @@ function renderSingleReportHtml(fileName, result) {
     <section class="card advice">
       <h2>${escapeHtml(advice.title)}</h2>
       <p>${escapeHtml(advice.body)}</p>
+    </section>
+    <section class="card">
+      <h2>页面交付与审核回答</h2>
+      <table>
+        <thead><tr><th>类型</th><th>内容</th></tr></thead>
+        <tbody>${usageRows}</tbody>
+      </table>
     </section>
     <section class="grid">
       <article class="card">
@@ -442,9 +603,14 @@ function renderResult(result) {
   const pointerLeft = clampPercent(result.generated_probability);
   const tone = decisionTone(result);
   const advice = decisionAdvice(result);
+  const usageGuide = resultUsageGuide(result);
   const badgeText = decisionLabel(result);
+  const realThresholdValue = result.thresholds ? Number(result.thresholds.real) : 0.45;
+  const generatedThresholdValue = result.thresholds ? Number(result.thresholds.generated) : 0.75;
+  const realThresholdPct = Number.isFinite(realThresholdValue) ? (realThresholdValue * 100).toFixed(0) : '45';
+  const generatedThresholdPct = Number.isFinite(generatedThresholdValue) ? (generatedThresholdValue * 100).toFixed(0) : '75';
   const thresholdText = result.thresholds
-    ? `真实 ≤ ${(result.thresholds.real * 100).toFixed(0)}%，AI ≥ ${(result.thresholds.generated * 100).toFixed(0)}%`
+    ? `${result.policy_profile_name || '当前策略'}：真实 ≤ ${realThresholdPct}%，AI ≥ ${generatedThresholdPct}%`
     : '';
   const finalText = result.binary_label === 'generated'
     ? result.platform_label_text
@@ -465,20 +631,35 @@ function renderResult(result) {
           <span>${result.binary_label === 'generated' ? '平台归因' : '处理结论'}</span>
           <strong>${escapeHtml(finalText)}</strong>
         </div>
+        <div class="metric-tile">
+          <span>识别策略</span>
+          <strong>${escapeHtml(result.policy_profile_name || getSelectedPolicyName())}</strong>
+        </div>
       </div>
       <div class="probability-meter" aria-label="AI 生成概率区间">
-        <div class="meter-track">
+        <div class="meter-track" style="--real-threshold:${realThresholdPct}%; --generated-threshold:${generatedThresholdPct}%">
           <span class="meter-pointer" style="left:${pointerLeft}%"></span>
         </div>
         <div class="meter-labels">
-          <span>真实区 ≤45%</span>
+          <span>真实区 ≤${realThresholdPct}%</span>
           <span>复核区</span>
-          <span>AI 区 ≥75%</span>
+          <span>AI 区 ≥${generatedThresholdPct}%</span>
         </div>
+      </div>
+      <div class="threshold-note">
+        ${escapeHtml(result.policy_profile_note || '当前策略用于在低误伤和高风险复核之间做取舍。')}
       </div>
       <div class="result-advice">
         <strong>${escapeHtml(advice.title)}</strong>
         <p>${escapeHtml(advice.body)}</p>
+      </div>
+      <div class="result-usage-grid">
+        ${usageGuide.map(item => `
+          <div class="usage-card">
+            <span>${escapeHtml(item.title)}</span>
+            <p>${escapeHtml(item.body)}</p>
+          </div>
+        `).join('')}
       </div>
     </div>
   `;
@@ -529,6 +710,7 @@ function renderResult(result) {
 async function requestPredict(file) {
   const formData = new FormData();
   formData.append('file', file);
+  formData.append('policy_profile', getSelectedPolicyProfile());
   const response = await fetch('/api/predict', {
     method: 'POST',
     body: formData
@@ -560,11 +742,12 @@ function renderBatchSummary() {
 
 function renderBatchResults() {
   if (!lastBatchResults.length) {
-    batchResults.innerHTML = '尚未执行批量识别';
+    batchResults.innerHTML = emptyState('尚未执行批量识别', '批量模式会汇总 AI 生成、真实图片和人工复核三类结果。');
     return;
   }
   batchResults.innerHTML = `
     ${renderBatchSummary()}
+    <p class="batch-interpretation">批量结果用于风险排序和复核分流，不等于自动退款、处罚或封禁结论。</p>
     <div class="table-wrap">
       <table class="result-table">
         <thead>
@@ -572,6 +755,7 @@ function renderBatchResults() {
             <th>文件</th>
             <th>AI / real</th>
             <th>最终标签</th>
+            <th>策略</th>
             <th>AI 概率</th>
           </tr>
         </thead>
@@ -581,6 +765,7 @@ function renderBatchResults() {
               <td>${escapeHtml(row.file_name)}</td>
               <td><span class="table-badge is-${decisionTone(row)}">${escapeHtml(decisionLabel(row))}</span></td>
               <td>${escapeHtml(row.platform_label_text)}</td>
+              <td>${escapeHtml(row.policy_profile_name || '')}</td>
               <td>${escapeHtml(row.generated_probability_pct)}</td>
             </tr>
           `).join('')}
@@ -681,6 +866,14 @@ clearHistoryBtn.addEventListener('click', () => {
   setStatus('历史记录已清空', 'success');
 });
 
+policyInputs.forEach(input => {
+  input.addEventListener('change', () => {
+    clearResult();
+    renderPolicyMetricPreview();
+    setStatus(`已切换为${getSelectedPolicyName()}，请重新识别当前图片。`, 'working');
+  });
+});
+
 exportHistoryBtn.addEventListener('click', () => {
   const rows = readHistory();
   if (!rows.length) {
@@ -700,7 +893,7 @@ exportBatchCsvBtn.addEventListener('click', () => {
     setStatus('没有可导出的批量结果', 'warning');
     return;
   }
-  const header = ['file_name', 'binary_label', 'decision_status', 'decision_text', 'platform_label', 'platform_label_text', 'generated_probability_pct'];
+  const header = ['file_name', 'policy_profile_id', 'policy_profile_name', 'binary_label', 'decision_status', 'decision_text', 'platform_label', 'platform_label_text', 'generated_probability_pct'];
   const lines = [
     header.join(','),
     ...lastBatchResults.map(row => header.map(key => `"${String(row[key] ?? '').replaceAll('"', '""')}"`).join(','))
@@ -722,4 +915,7 @@ exportSingleReportBtn.addEventListener('click', () => {
 
 updateQueueSummary();
 renderFileMeta();
+renderBatchResults();
 renderHistory();
+renderPolicyMetricPreview();
+clearResult();

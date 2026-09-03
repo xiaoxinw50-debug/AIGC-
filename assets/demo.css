@@ -420,6 +420,36 @@ button:disabled {
 
 .metric-tile strong {
   font-size: 18px;
+  overflow-wrap: anywhere;
+}
+
+.result-usage-grid {
+  display: grid;
+  grid-template-columns: repeat(3, minmax(0, 1fr));
+  gap: 10px;
+}
+
+.usage-card {
+  min-width: 0;
+  padding: 12px 13px;
+  border-radius: 14px;
+  background: rgba(255, 255, 255, 0.86);
+  border: 1px solid rgba(151, 16, 13, 0.08);
+}
+
+.usage-card span {
+  display: block;
+  margin-bottom: 6px;
+  color: var(--pk-red);
+  font-size: 12px;
+  font-weight: 900;
+}
+
+.usage-card p {
+  margin: 0;
+  color: var(--text-secondary);
+  line-height: 1.65;
+  font-size: 12px;
 }
 
 .prob-row {
@@ -485,7 +515,7 @@ button:disabled {
 
 .info-grid {
   display: grid;
-  grid-template-columns: repeat(3, 1fr);
+  grid-template-columns: repeat(4, minmax(0, 1fr));
   gap: 14px;
 }
 
@@ -598,6 +628,7 @@ code {
   .results-grid,
   .two-col,
   .info-grid,
+  .result-usage-grid,
   .top-bar {
     grid-template-columns: 1fr;
     flex-direction: column;

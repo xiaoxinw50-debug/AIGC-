@@ -4,6 +4,7 @@
   <meta charset="UTF-8">
   <meta name="viewport" content="width=device-width, initial-scale=1.0">
   <title>AI图片识别与平台归因展示版</title>
+  <link rel="icon" href="data:image/svg+xml,%3Csvg xmlns='http://www.w3.org/2000/svg' viewBox='0 0 32 32'%3E%3Crect width='32' height='32' rx='7' fill='%2397100d'/%3E%3Ctext x='16' y='22' text-anchor='middle' font-size='15' fill='white' font-family='Arial'%3EAI%3C/text%3E%3C/svg%3E">
   <link rel="stylesheet" href="./assets/demo.css">
 </head>
 <body>
@@ -25,7 +26,7 @@
         <h2>展示目的</h2>
         <p class="lead">
           这个版本用于 GitHub 在线展示。它保留网页原型的视觉结构和解释逻辑，
-          但演示方式改为“切换典型样本”，因为 GitHub Pages 不能直接运行 Flask + Python 模型。
+          但演示方式改为“切换典型样本”，因为 GitHub Pages 不能直接运行 Flask + Python 模型。可实时推理版本部署在 Render 页面。
         </p>
       </div>
       <div class="notice">
@@ -112,6 +113,10 @@
         <div class="info-card">
           <h3>重点看典型样本差异</h3>
           <p>即梦AI、智谱GLM-Image 与真实对照图放在一起，能更直观看到平台差异、风险差异和模型边界。</p>
+        </div>
+        <div class="info-card">
+          <h3>区分展示口径</h3>
+          <p>页面交付的是风险分流和证据线索，对外回答应强调复核流程，不把模型概率直接等同于自动处罚依据。</p>
         </div>
       </div>
     </section>

@@ -36,10 +36,26 @@ function platformDisplayName(code) {
   return PLATFORM_NAME_MAP[code] || code;
 }
 
+function resultUsageGuide(result) {
+  if (result.binary_label === 'real') {
+    return [
+      ['页面交付', '输出为真实图低风险，不继续给平台来源。'],
+      ['审核动作', '保留原图文件、订单上下文和沟通记录。'],
+      ['对外说明', '当前未发现强 AI 生成留痕，本次不按 AI 假图处理。']
+    ];
+  }
+  return [
+    ['页面交付', `输出为高置信 AI 生成，并在已采样平台中给出 ${result.platform_label_text}。`],
+    ['审核动作', '查看平台概率和文件层信号，结合原始文件、订单链路和多角度图片做最终核验。'],
+    ['对外说明', '平台归因是已采样范围内的技术线索，不是开放世界定责结论。']
+  ];
+}
+
 function renderResult(sample) {
   const result = sample.result;
   const generatedPct = (result.generated_probability * 100).toFixed(2);
   const isReal = result.binary_label === 'real';
+  const usageGuide = resultUsageGuide(result);
   resultSummary.innerHTML = `
     <div class="result-card">
       <span class="result-badge ${isReal ? 'is-real' : ''}">${isReal ? '真实图片' : 'AI 生成'}</span>
@@ -55,6 +71,14 @@ function renderResult(sample) {
       </div>
       <div><strong>平台来源：</strong>${escapeHtml(result.platform_label_text)}</div>
       <div class="sample-note"><strong>样本说明：</strong>${escapeHtml(sample.summary)}</div>
+      <div class="result-usage-grid">
+        ${usageGuide.map(([title, body]) => `
+          <div class="usage-card">
+            <span>${escapeHtml(title)}</span>
+            <p>${escapeHtml(body)}</p>
+          </div>
+        `).join('')}
+      </div>
     </div>
   `;
 

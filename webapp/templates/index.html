@@ -4,6 +4,7 @@
   <meta charset="UTF-8">
   <meta name="viewport" content="width=device-width, initial-scale=1.0">
   <title>AI图片识别与平台归因原型</title>
+  <link rel="icon" href="data:image/svg+xml,%3Csvg xmlns='http://www.w3.org/2000/svg' viewBox='0 0 32 32'%3E%3Crect width='32' height='32' rx='7' fill='%2397100d'/%3E%3Ctext x='16' y='22' text-anchor='middle' font-size='15' fill='white' font-family='Arial'%3EAI%3C/text%3E%3C/svg%3E">
   <link rel="stylesheet" href="../static/style.css">
 </head>
 <body>
@@ -15,9 +16,9 @@
         <p class="hero-subtitle">低误伤优先的 AIGC 图片初筛工具：先判断 AI / real，再在高置信 AI 图中做四平台来源归因。</p>
       </div>
       <div class="top-meta">
-        <div class="meta-pill">网页 v2 模型</div>
-        <div class="meta-pill">真实 ≤45%</div>
-        <div class="meta-pill">AI ≥75%</div>
+        <div class="meta-pill">网页 v3 模型</div>
+        <div class="meta-pill">v4 阈值策略</div>
+        <div class="meta-pill">三档复核</div>
       </div>
     </header>
 
@@ -41,6 +42,31 @@
         <div class="stat-card">
           <span class="stat-k">可解释</span>
           <span class="stat-v">结果同步展示格式、尺寸、EXIF 与信息字段等文件层证据</span>
+        </div>
+      </div>
+    </section>
+
+    <section class="demo-brief glass" aria-label="答辩演示定位">
+      <div class="demo-copy">
+        <p class="overview-kicker">答辩演示定位</p>
+        <h2>把 AI 图片检测做成可复核的证据工作台</h2>
+        <p>
+          页面输出分成两层：第一层给出 AI / real 风险分流，第二层只在高置信 AI 图中做四平台归因。
+          对老师和审核人员展示时，重点不是宣称自动裁决，而是说明系统如何把图片文件里的留痕、模型概率和人工复核流程连成一条可解释证据链。
+        </p>
+      </div>
+      <div class="demo-grid">
+        <div class="demo-item">
+          <span>页面交付</span>
+          <strong>真实图低风险、人工复核、AI 生成三类结果</strong>
+        </div>
+        <div class="demo-item">
+          <span>审核回答</span>
+          <strong>提示是否需要原图、多角度图、订单上下文或人工复核</strong>
+        </div>
+        <div class="demo-item">
+          <span>技术证据</span>
+          <strong>展示格式、尺寸、EXIF、alpha 通道、info 字段和模型概率</strong>
         </div>
       </div>
     </section>
@@ -87,6 +113,25 @@
             </div>
           </div>
           <div id="fileMeta" class="file-meta empty">尚未选择文件</div>
+          <fieldset class="policy-selector" aria-label="识别策略">
+            <legend>识别策略</legend>
+            {% for profile in policy_profiles %}
+            <label class="policy-option" for="policy-{{ profile.profile_id }}">
+              <input
+                id="policy-{{ profile.profile_id }}"
+                type="radio"
+                name="policyProfile"
+                value="{{ profile.profile_id }}"
+                {% if profile.profile_id == default_policy_id %}checked{% endif %}
+              >
+              <span>
+                <strong>{{ profile.profile_name }}</strong>
+                <small>{{ profile.ui_note }}</small>
+              </span>
+            </label>
+            {% endfor %}
+          </fieldset>
+          <div id="policyMetricPreview" class="policy-metric-preview" aria-live="polite"></div>
           <div class="upload-actions">
             <button id="predictBtn" type="button">识别当前图片</button>
             <button id="batchPredictBtn" type="button" class="secondary-btn">批量识别全部</button>
@@ -165,6 +210,10 @@
         <div class="info-card">
           <h3>文件层留痕</h3>
           <p>格式、尺寸、alpha、EXIF 和信息键数量是当前最关键的解释信号。</p>
+        </div>
+        <div class="info-card">
+          <h3>边界样本</h3>
+          <p>证件照、证书照、白底商品图和截图容易被模型误读为规整生成图，因此页面默认保留复核区，不直接作为处罚或退款依据。</p>
         </div>
       </div>
     </section>
@@ -259,6 +308,7 @@
     </section>
   </main>
 
+  <script id="policyProfileData" type="application/json">{{ policy_profiles|tojson }}</script>
   <script src="../static/app.js"></script>
 </body>
 </html>
