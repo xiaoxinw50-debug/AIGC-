@@ -423,9 +423,46 @@ button:disabled {
   overflow-wrap: anywhere;
 }
 
+.result-delivery {
+  padding: 14px 16px;
+  border-left: 4px solid var(--pk-red);
+  border-radius: 4px 14px 14px 4px;
+  background: linear-gradient(90deg, rgba(151, 16, 13, 0.08), rgba(255, 249, 246, 0.92));
+  border-top: 1px solid rgba(151, 16, 13, 0.1);
+  border-right: 1px solid rgba(151, 16, 13, 0.1);
+  border-bottom: 1px solid rgba(151, 16, 13, 0.1);
+}
+
+.result-delivery > span,
+.usage-section-label {
+  display: block;
+  margin-bottom: 7px;
+  color: var(--pk-red);
+  font-size: 11px;
+  font-weight: 900;
+  letter-spacing: 0.08em;
+}
+
+.result-delivery strong {
+  display: block;
+  margin-bottom: 5px;
+  font-size: 15px;
+}
+
+.result-delivery p {
+  margin: 0;
+  color: var(--text-secondary);
+  line-height: 1.7;
+  font-size: 13px;
+}
+
+.result-explanation {
+  padding-top: 2px;
+}
+
 .result-usage-grid {
   display: grid;
-  grid-template-columns: repeat(3, minmax(0, 1fr));
+  grid-template-columns: repeat(2, minmax(0, 1fr));
   gap: 10px;
 }
 

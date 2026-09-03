@@ -36,18 +36,23 @@ function platformDisplayName(code) {
   return PLATFORM_NAME_MAP[code] || code;
 }
 
+function resultDelivery(result) {
+  if (result.binary_label === 'real') {
+    return ['真实图低风险', '当前未发现强 AI 生成留痕，不继续输出平台来源。'];
+  }
+  return ['高置信 AI 生成', `在已采样平台中给出 ${result.platform_label_text} 作为来源线索。`];
+}
+
 function resultUsageGuide(result) {
   if (result.binary_label === 'real') {
     return [
-      ['页面交付', '输出为真实图低风险，不继续给平台来源。'],
-      ['审核动作', '保留原图文件、订单上下文和沟通记录。'],
-      ['对外说明', '当前未发现强 AI 生成留痕，本次不按 AI 假图处理。']
+      ['建议下一步', '保留原图文件、订单上下文和沟通记录。'],
+      ['结果边界', '低风险结果不等同于对图片真实性作绝对保证。']
     ];
   }
   return [
-    ['页面交付', `输出为高置信 AI 生成，并在已采样平台中给出 ${result.platform_label_text}。`],
-    ['审核动作', '查看平台概率和文件层信号，结合原始文件、订单链路和多角度图片做最终核验。'],
-    ['对外说明', '平台归因是已采样范围内的技术线索，不是开放世界定责结论。']
+    ['建议下一步', '查看平台概率和文件层信号，结合原始文件、订单链路和多角度图片做最终核验。'],
+    ['结果边界', '平台归因是已采样范围内的技术线索，不等同于开放世界来源定责。']
   ];
 }
 
@@ -55,6 +60,7 @@ function renderResult(sample) {
   const result = sample.result;
   const generatedPct = (result.generated_probability * 100).toFixed(2);
   const isReal = result.binary_label === 'real';
+  const delivery = resultDelivery(result);
   const usageGuide = resultUsageGuide(result);
   resultSummary.innerHTML = `
     <div class="result-card">
@@ -71,13 +77,21 @@ function renderResult(sample) {
       </div>
       <div><strong>平台来源：</strong>${escapeHtml(result.platform_label_text)}</div>
       <div class="sample-note"><strong>样本说明：</strong>${escapeHtml(sample.summary)}</div>
-      <div class="result-usage-grid">
-        ${usageGuide.map(([title, body]) => `
-          <div class="usage-card">
-            <span>${escapeHtml(title)}</span>
-            <p>${escapeHtml(body)}</p>
-          </div>
-        `).join('')}
+      <div class="result-delivery">
+        <span>检测交付</span>
+        <strong>${escapeHtml(delivery[0])}</strong>
+        <p>${escapeHtml(delivery[1])}</p>
+      </div>
+      <div class="result-explanation">
+        <span class="usage-section-label">使用说明</span>
+        <div class="result-usage-grid">
+          ${usageGuide.map(([title, body]) => `
+            <div class="usage-card">
+              <span>${escapeHtml(title)}</span>
+              <p>${escapeHtml(body)}</p>
+            </div>
+          `).join('')}
+        </div>
       </div>
     </div>
   `;

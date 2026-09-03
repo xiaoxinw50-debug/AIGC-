@@ -113,7 +113,7 @@ function thresholdPercent(value) {
 function policyUseCase(profileId) {
   const mapping = {
     operational_low_false_ai: '适合普通展示和真实图保护，降低证件照、白底商品图被误判为 AI 的风险。',
-    balanced_review: '适合课程演示和平台审核，把边界图片留在复核区，便于说明模型如何取舍。',
+    balanced_review: '适合常规审核，将边界图片保留在复核区，平衡自动判断与人工核验。',
     high_risk_after_sales_review: '适合售后异物、瑕疵和仅退款纠纷的风险初筛，目标是提高可疑 AI 图捕获率。'
   };
   return mapping[profileId] || '当前策略用于在低误伤、自动命中和人工复核之间做取舍。';
@@ -184,7 +184,7 @@ function emptyState(title, body) {
 }
 
 function clearResult() {
-  resultSummary.innerHTML = emptyState('尚未识别', '上传图片后，这里会显示 AI / real 结论、阈值区间和审核建议。');
+  resultSummary.innerHTML = emptyState('尚未识别', '上传图片后，这里会显示 AI / real 结论、阈值区间、检测交付和使用说明。');
   platformProbabilities.innerHTML = emptyState('等待 AI 高置信结果', '只有进入 AI 区的图片才展示四平台概率。');
   signalSnapshot.innerHTML = emptyState('等待读取文件层信号', '系统会提取格式、尺寸、EXIF、alpha 通道和 info 字段。');
   rationaleBox.innerHTML = emptyState('等待生成解释', '解释会说明模型依据、边界样本处理和平台归因限制。');
@@ -272,19 +272,19 @@ function decisionTone(row) {
 function decisionAdvice(result) {
   if (result.binary_label === 'real') {
     return {
-      title: '可作为真实图低风险结果',
-      body: '当前不继续平台归因。若用于纠纷场景，仍建议保留原图文件、订单上下文和沟通记录。'
+      title: '真实图低风险',
+      body: '系统交付真实图低风险结果，不继续输出平台来源。'
     };
   }
   if (result.binary_label === 'uncertain') {
     return {
-      title: '进入人工复核，不硬判平台',
-      body: '建议要求补充原始文件、多角度图片或订单证据。系统不会把边界图片直接判成某个平台生成。'
+      title: '需人工复核',
+      body: '系统交付需人工复核结果，不输出确定的 AI / real 标签和平台来源。'
     };
   }
   return {
-    title: '高置信 AI 生成，继续查看平台归因',
-    body: '平台结果来自已采样四个平台的导出留痕差异，可作为初筛线索，不应表述为开放世界来源鉴定。'
+    title: '高置信 AI 生成',
+    body: `系统交付高置信 AI 生成结果，并在已采样平台中给出 ${result.platform_label_text || '当前最高概率平台'}。`
   };
 }
 
@@ -292,47 +292,35 @@ function resultUsageGuide(result) {
   if (result.binary_label === 'real') {
     return [
       {
-        title: '页面交付',
-        body: '输出为真实图低风险，不继续给平台来源，避免把普通照片误当成 AI 图。'
-      },
-      {
-        title: '审核动作',
+        title: '建议下一步',
         body: '保留原图文件、订单上下文和沟通记录。若场景敏感，再要求上传原始文件。'
       },
       {
-        title: '对外说明',
-        body: '可以说明当前未发现强 AI 生成留痕，本次不按 AI 假图处理。'
+        title: '结果边界',
+        body: '当前未发现强 AI 生成留痕，但低风险结果不等同于对图片真实性作绝对保证。'
       }
     ];
   }
   if (result.binary_label === 'uncertain') {
     return [
       {
-        title: '页面交付',
-        body: '输出为人工复核，不给平台归因，避免把边界图包装成确定结论。'
-      },
-      {
-        title: '审核动作',
+        title: '建议下一步',
         body: '要求补充原始图片、多角度照片、拍摄时间或订单证据，再由人工复核。'
       },
       {
-        title: '对外说明',
-        body: '可以说明图片特征处在模型复核区，需要补充材料后再继续判断。'
+        title: '结果边界',
+        body: '图片特征处在模型复核区，系统不输出确定的 AI 判断，也不继续进行平台归因。'
       }
     ];
   }
   return [
     {
-      title: '页面交付',
-      body: `输出为高置信 AI 生成，并在已采样平台中给出 ${result.platform_label_text || '当前最高概率平台'}。`
-    },
-    {
-      title: '审核动作',
+      title: '建议下一步',
       body: '查看平台概率和文件层信号，结合原始文件、订单链路和多角度图片做最终核验。'
     },
     {
-      title: '对外说明',
-      body: '可以说明系统发现较强 AI 生成留痕，但平台归因是已采样范围内的技术线索，不是开放世界定责。'
+      title: '结果边界',
+      body: '系统发现较强 AI 生成留痕；平台归因仅是已采样范围内的技术线索，不等同于来源定责。'
     }
   ];
 }
@@ -344,7 +332,7 @@ function decisionLabel(row) {
 function renderHistory() {
   const rows = readHistory();
   if (!rows.length) {
-    historyList.innerHTML = emptyState('尚无历史记录', '完成识别后会在本地浏览器保存最近结果，便于课堂演示回看。');
+    historyList.innerHTML = emptyState('尚无历史记录', '完成识别后会在本地浏览器保存最近结果，便于后续核验和结果追踪。');
     return;
   }
   historyList.innerHTML = `
@@ -400,7 +388,10 @@ function toHistoryRecord(fileName, result) {
 
 function renderSingleReportHtml(fileName, result) {
   const advice = decisionAdvice(result);
-  const usageRows = resultUsageGuide(result)
+  const usageRows = [
+    { title: '检测交付', body: advice.body },
+    ...resultUsageGuide(result)
+  ]
     .map(item => `
       <tr>
         <td>${escapeHtml(item.title)}</td>
@@ -475,7 +466,7 @@ function renderSingleReportHtml(fileName, result) {
       <p>${escapeHtml(advice.body)}</p>
     </section>
     <section class="card">
-      <h2>页面交付与审核回答</h2>
+      <h2>检测交付与使用说明</h2>
       <table>
         <thead><tr><th>类型</th><th>内容</th></tr></thead>
         <tbody>${usageRows}</tbody>
@@ -649,17 +640,21 @@ function renderResult(result) {
       <div class="threshold-note">
         ${escapeHtml(result.policy_profile_note || '当前策略用于在低误伤和高风险复核之间做取舍。')}
       </div>
-      <div class="result-advice">
+      <div class="result-delivery">
+        <span>检测交付</span>
         <strong>${escapeHtml(advice.title)}</strong>
         <p>${escapeHtml(advice.body)}</p>
       </div>
-      <div class="result-usage-grid">
-        ${usageGuide.map(item => `
-          <div class="usage-card">
-            <span>${escapeHtml(item.title)}</span>
-            <p>${escapeHtml(item.body)}</p>
-          </div>
-        `).join('')}
+      <div class="result-explanation">
+        <span class="usage-section-label">使用说明</span>
+        <div class="result-usage-grid">
+          ${usageGuide.map(item => `
+            <div class="usage-card">
+              <span>${escapeHtml(item.title)}</span>
+              <p>${escapeHtml(item.body)}</p>
+            </div>
+          `).join('')}
+        </div>
       </div>
     </div>
   `;
@@ -851,7 +846,7 @@ batchPredictBtn.addEventListener('click', async () => {
       updateQueueSummary();
       setProgress(((index + 1) / files.length) * 100);
     }
-    setStatus(`批量识别完成，共 ${files.length} 张。可导出 CSV 用于答辩展示。`, 'success');
+    setStatus(`批量识别完成，共 ${files.length} 张。可导出 CSV 继续核验或留档。`, 'success');
   } catch (error) {
     setStatus(`批量识别失败：${error.message}`, 'error');
   } finally {

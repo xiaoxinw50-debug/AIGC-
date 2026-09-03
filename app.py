@@ -29,7 +29,7 @@ platform_bundle = load_bundle(PLATFORM_BUNDLE)
 
 PROFILE_UI_NOTES = {
     "operational_low_false_ai": "默认展示档：优先避免真实图被误判为 AI，复核负担最低。",
-    "balanced_review": "均衡复核档：适合课程演示和平台审核，把更多边界样本交给人工复核。",
+    "balanced_review": "均衡复核档：适合常规审核，把更多边界样本交给人工复核。",
     "high_risk_after_sales_review": "售后高风险档：适合异物、瑕疵、仅退款纠纷线索初筛，宁可多复核也不轻易放过可疑图。",
 }
 
