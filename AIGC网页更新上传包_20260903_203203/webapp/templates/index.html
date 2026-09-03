@@ -1,0 +1,314 @@
+<!DOCTYPE html>
+<html lang="zh-CN">
+<head>
+  <meta charset="UTF-8">
+  <meta name="viewport" content="width=device-width, initial-scale=1.0">
+  <title>AI图片识别与平台归因原型</title>
+  <link rel="icon" href="data:image/svg+xml,%3Csvg xmlns='http://www.w3.org/2000/svg' viewBox='0 0 32 32'%3E%3Crect width='32' height='32' rx='7' fill='%2397100d'/%3E%3Ctext x='16' y='22' text-anchor='middle' font-size='15' fill='white' font-family='Arial'%3EAI%3C/text%3E%3C/svg%3E">
+  <link rel="stylesheet" href="../static/style.css">
+</head>
+<body>
+  <main class="page">
+    <header class="top-bar glass">
+      <div class="brand">
+        <p class="eyebrow">AIGC 标识治理项目 文件层留痕原型</p>
+        <h1><span class="title-part">AI 图片识别</span><span class="title-part">与平台归因</span></h1>
+        <p class="hero-subtitle">低误伤优先的 AIGC 图片初筛工具：先判断 AI / real，再在高置信 AI 图中做四平台来源归因。</p>
+      </div>
+      <div class="top-meta">
+        <div class="meta-pill">网页 v3 模型</div>
+        <div class="meta-pill">v4 阈值策略</div>
+        <div class="meta-pill">三档复核</div>
+      </div>
+    </header>
+
+    <section class="overview-strip">
+      <div class="overview-copy">
+        <p class="overview-kicker">文件层留痕优先解释</p>
+        <p class="overview-text">
+          系统先判断图片是否属于 AI 生成，再在已采样平台 <code>文心一言</code>、<code>通义千问</code>、<code>即梦AI</code>、<code>智谱 GLM-Image</code>
+          中做来源归因。当前归因主要依据导出尺寸、图像格式、EXIF、alpha 通道和信息字段差异，而不是单纯内容风格。
+        </p>
+      </div>
+      <div class="overview-stats" aria-label="模型校准摘要">
+        <div class="stat-card">
+          <span class="stat-k">低误伤</span>
+          <span class="stat-v">网页端采用保守阈值，优先避免把真实图直接判为 AI</span>
+        </div>
+        <div class="stat-card">
+          <span class="stat-k">复核区</span>
+          <span class="stat-v">边界图片进入人工复核，不在页面上强行给结论</span>
+        </div>
+        <div class="stat-card">
+          <span class="stat-k">可解释</span>
+          <span class="stat-v">结果同步展示格式、尺寸、EXIF 与信息字段等文件层证据</span>
+        </div>
+      </div>
+    </section>
+
+    <section class="demo-brief glass" aria-label="答辩演示定位">
+      <div class="demo-copy">
+        <p class="overview-kicker">答辩演示定位</p>
+        <h2>把 AI 图片检测做成可复核的证据工作台</h2>
+        <p>
+          页面输出分成两层：第一层给出 AI / real 风险分流，第二层只在高置信 AI 图中做四平台归因。
+          对老师和审核人员展示时，重点不是宣称自动裁决，而是说明系统如何把图片文件里的留痕、模型概率和人工复核流程连成一条可解释证据链。
+        </p>
+      </div>
+      <div class="demo-grid">
+        <div class="demo-item">
+          <span>页面交付</span>
+          <strong>真实图低风险、人工复核、AI 生成三类结果</strong>
+        </div>
+        <div class="demo-item">
+          <span>审核回答</span>
+          <strong>提示是否需要原图、多角度图、订单上下文或人工复核</strong>
+        </div>
+        <div class="demo-item">
+          <span>技术证据</span>
+          <strong>展示格式、尺寸、EXIF、alpha 通道、info 字段和模型概率</strong>
+        </div>
+      </div>
+    </section>
+
+    <section class="workflow-strip" aria-label="识别流程">
+      <div class="workflow-step">
+        <span>1</span>
+        <strong>上传图片</strong>
+        <p>支持单张和批量，自动读取格式、尺寸和文件层信息。</p>
+      </div>
+      <div class="workflow-step">
+        <span>2</span>
+        <strong>AI / real 初筛</strong>
+        <p>低概率判真实，高概率判 AI，中间进入复核区间。</p>
+      </div>
+      <div class="workflow-step">
+        <span>3</span>
+        <strong>平台归因</strong>
+        <p>只有高置信 AI 图才输出文心一言、通义千问、即梦AI、智谱 GLM-Image 概率。</p>
+      </div>
+      <div class="workflow-step">
+        <span>4</span>
+        <strong>导出证据</strong>
+        <p>可导出单张报告、批量 CSV 和本地识别历史。</p>
+      </div>
+    </section>
+
+    <section class="workspace">
+      <section class="glass upload-panel">
+        <div class="upload-box">
+          <div class="section-head">
+            <span class="section-tag">01</span>
+            <div>
+              <h2>上传检测</h2>
+              <p>支持 PNG / JPEG / WEBP，单张图片最大 16MB。支持单图与批量队列。</p>
+            </div>
+          </div>
+          <label for="fileInput">选择图片</label>
+          <div class="upload-dropzone">
+            <input id="fileInput" type="file" accept="image/png,image/jpeg,image/webp" multiple>
+            <div class="dropzone-copy">
+              <strong>拖拽或点击上传</strong>
+              <span>支持 PNG / JPEG / WEBP，可一次选择多张</span>
+            </div>
+          </div>
+          <div id="fileMeta" class="file-meta empty">尚未选择文件</div>
+          <fieldset class="policy-selector" aria-label="识别策略">
+            <legend>识别策略</legend>
+            {% for profile in policy_profiles %}
+            <label class="policy-option" for="policy-{{ profile.profile_id }}">
+              <input
+                id="policy-{{ profile.profile_id }}"
+                type="radio"
+                name="policyProfile"
+                value="{{ profile.profile_id }}"
+                {% if profile.profile_id == default_policy_id %}checked{% endif %}
+              >
+              <span>
+                <strong>{{ profile.profile_name }}</strong>
+                <small>{{ profile.ui_note }}</small>
+              </span>
+            </label>
+            {% endfor %}
+          </fieldset>
+          <div id="policyMetricPreview" class="policy-metric-preview" aria-live="polite"></div>
+          <div class="upload-actions">
+            <button id="predictBtn" type="button">识别当前图片</button>
+            <button id="batchPredictBtn" type="button" class="secondary-btn">批量识别全部</button>
+          </div>
+          <div id="progressWrap" class="progress-wrap" aria-hidden="true">
+            <div id="progressBar" class="progress-bar"></div>
+          </div>
+          <div id="queueSummary" class="queue-summary">
+            <div class="queue-chip">当前队列 0</div>
+            <div class="queue-chip">待识别 0</div>
+          </div>
+          <p id="statusText" class="status" aria-live="polite">等待上传</p>
+        </div>
+        <div class="preview-box">
+          <div id="previewPlaceholder" class="preview-placeholder">
+            <span class="preview-label">预览区</span>
+            <strong>上传图片后在这里查看原图</strong>
+            <p>单图识别会展示当前图片，批量识别时保留首张预览。</p>
+          </div>
+          <img id="previewImage" alt="预览图">
+        </div>
+      </section>
+
+      <aside class="glass cue-panel">
+        <div class="section-head">
+          <span class="section-tag">02</span>
+          <div>
+            <h2>文件层留痕优先级</h2>
+            <p>当前系统在解释时优先展示这些信号。</p>
+          </div>
+        </div>
+        <ol class="cue-list">
+          <li>图像格式：PNG / JPEG / WEBP</li>
+          <li>原始尺寸、长宽比、像素规模</li>
+          <li>是否存在 alpha 通道</li>
+          <li>EXIF 是否存在</li>
+          <li>信息键数量与导出链路差异</li>
+          <li>边界样本进入复核，不直接给平台结论</li>
+        </ol>
+      </aside>
+    </section>
+
+    <section class="results-grid">
+      <article class="panel panel-summary">
+        <div class="panel-toolbar compact">
+          <h2>识别结果</h2>
+          <button id="exportSingleReportBtn" type="button" class="ghost-btn">导出单张报告</button>
+        </div>
+        <div id="resultSummary" class="empty">尚未识别</div>
+      </article>
+      <article class="panel panel-probabilities">
+        <h2>平台概率</h2>
+        <div id="platformProbabilities" class="empty">尚未识别</div>
+      </article>
+      <article class="panel panel-signals">
+        <h2>文件层信号</h2>
+        <div id="signalSnapshot" class="empty">尚未识别</div>
+      </article>
+      <article class="panel panel-rationale">
+        <h2>解释</h2>
+        <div id="rationaleBox" class="empty">尚未识别</div>
+      </article>
+    </section>
+
+    <section class="panel info-panel">
+      <h2>如何理解这个结果</h2>
+      <div class="info-grid">
+        <div class="info-card">
+          <h3>AI / real 判断</h3>
+          <p>这是当前最稳的一层。模型先根据文件层和增强图像特征判断图片是否属于生成图。</p>
+        </div>
+        <div class="info-card">
+          <h3>平台归因</h3>
+          <p>只有当图片先被判为 generated 时，系统才继续给出平台归因结果。</p>
+        </div>
+        <div class="info-card">
+          <h3>文件层留痕</h3>
+          <p>格式、尺寸、alpha、EXIF 和信息键数量是当前最关键的解释信号。</p>
+        </div>
+        <div class="info-card">
+          <h3>边界样本</h3>
+          <p>证件照、证书照、白底商品图和截图容易被模型误读为规整生成图，因此页面默认保留复核区，不直接作为处罚或退款依据。</p>
+        </div>
+      </div>
+    </section>
+
+    <section class="two-col">
+      <article class="panel">
+        <div class="panel-toolbar">
+          <div>
+            <h2>批量识别结果</h2>
+            <p class="panel-note">适合一轮演示中连续比较多张图片。</p>
+          </div>
+          <button id="exportBatchCsvBtn" type="button" class="ghost-btn">导出 CSV</button>
+        </div>
+        <div id="batchResults" class="empty">尚未执行批量识别</div>
+      </article>
+      <article class="panel">
+        <div class="panel-toolbar">
+          <div>
+            <h2>最近识别历史</h2>
+            <p class="panel-note">历史记录保存在当前浏览器本地。</p>
+          </div>
+          <div class="toolbar-actions">
+            <button id="exportHistoryBtn" type="button" class="ghost-btn">导出 JSON</button>
+            <button id="clearHistoryBtn" type="button" class="ghost-btn danger">清空历史</button>
+          </div>
+        </div>
+        <div id="historyList" class="empty">尚无历史记录</div>
+      </article>
+    </section>
+
+    <section class="two-col">
+      <article class="panel">
+        <h2>AI / real 阶段重点信号</h2>
+        <div class="feature-card-list">
+          {% for row in global_binary_features %}
+          <div class="feature-card">
+            <div class="feature-card-top">
+              <strong>{{ row.feature }}</strong>
+              <span>{{ row.importance }}</span>
+            </div>
+            <p>{{ row.explanation }}</p>
+          </div>
+          {% endfor %}
+        </div>
+        {% if global_binary_features_more %}
+        <details class="feature-details">
+          <summary>展开查看模型依据</summary>
+          <div class="feature-card-list secondary">
+            {% for row in global_binary_features_more %}
+            <div class="feature-card">
+              <div class="feature-card-top">
+                <strong>{{ row.feature }}</strong>
+                <span>{{ row.importance }}</span>
+              </div>
+              <p>{{ row.explanation }}</p>
+            </div>
+            {% endfor %}
+          </div>
+        </details>
+        {% endif %}
+      </article>
+      <article class="panel">
+        <h2>平台归因阶段重点信号</h2>
+        <div class="feature-card-list">
+          {% for row in global_platform_features %}
+          <div class="feature-card">
+            <div class="feature-card-top">
+              <strong>{{ row.feature }}</strong>
+              <span>{{ row.importance }}</span>
+            </div>
+            <p>{{ row.explanation }}</p>
+          </div>
+          {% endfor %}
+        </div>
+        {% if global_platform_features_more %}
+        <details class="feature-details">
+          <summary>展开查看模型依据</summary>
+          <div class="feature-card-list secondary">
+            {% for row in global_platform_features_more %}
+            <div class="feature-card">
+              <div class="feature-card-top">
+                <strong>{{ row.feature }}</strong>
+                <span>{{ row.importance }}</span>
+              </div>
+              <p>{{ row.explanation }}</p>
+            </div>
+            {% endfor %}
+          </div>
+        </details>
+        {% endif %}
+      </article>
+    </section>
+  </main>
+
+  <script id="policyProfileData" type="application/json">{{ policy_profiles|tojson }}</script>
+  <script src="../static/app.js"></script>
+</body>
+</html>
