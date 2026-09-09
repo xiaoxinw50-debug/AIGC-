@@ -1,0 +1,63 @@
+{
+  "version": "platform_open_set_ensemble_v5",
+  "platform_labels": [
+    "PLT01",
+    "PLT02",
+    "PLT03",
+    "PLT05"
+  ],
+  "native_weight": 0.5,
+  "robust_weight": 0.5,
+  "temperature": 1.0,
+  "min_confidence": 0.95,
+  "min_margin": 0.0,
+  "require_model_agreement": false,
+  "drift_reference": {
+    "feature_names": [
+      "orig_width",
+      "orig_height",
+      "aspect_ratio",
+      "megapixels",
+      "file_size_log",
+      "edge_mean",
+      "laplacian_var",
+      "high_freq_ratio",
+      "saturation_mean",
+      "gray_std"
+    ],
+    "median": {
+      "orig_width": 500.0,
+      "orig_height": 500.0,
+      "aspect_ratio": 1.0,
+      "megapixels": 0.25,
+      "file_size_log": 11.377999671479778,
+      "edge_mean": 0.0841654799878597,
+      "laplacian_var": 0.026343785226345,
+      "high_freq_ratio": 0.0015586575905528,
+      "saturation_mean": 0.23387704789638514,
+      "gray_std": 0.2120468989014625
+    },
+    "iqr": {
+      "orig_width": 220.0,
+      "orig_height": 524.0,
+      "aspect_ratio": 0.05,
+      "megapixels": 0.6716,
+      "file_size_log": 1.6499569961933567,
+      "edge_mean": 0.029621131718158722,
+      "laplacian_var": 0.016420505009591625,
+      "high_freq_ratio": 0.0021456744650574246,
+      "saturation_mean": 0.14273047447204593,
+      "gray_std": 0.047388333827257156
+    },
+    "threshold": 2.5139761390540625,
+    "reference_rows": 126,
+    "method": "mean clipped robust z-score; reference fitted on source-group train only; threshold is train q99"
+  },
+  "unknown_label": "unknown_platform",
+  "selection_status": "strict_constraints_met",
+  "selection_constraints": {
+    "calibration_unknown_false_attribution_rate_max": 0.05,
+    "calibration_known_accepted_accuracy_min": 0.8
+  },
+  "training_note": "Native-export and propagation-robust probability fusion; temperature and rejection thresholds selected without touching source-group/model-family held-out tests."
+}

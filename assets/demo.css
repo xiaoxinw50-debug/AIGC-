@@ -496,6 +496,30 @@ button:disabled {
   border-bottom: 1px solid rgba(0, 0, 0, 0.06);
 }
 
+.platform-decision {
+  margin-bottom: 12px;
+  padding: 12px 14px;
+  border-left: 4px solid var(--pk-red);
+  background: rgba(151, 16, 13, 0.06);
+  line-height: 1.6;
+}
+
+.platform-decision.is-rejected {
+  border-left-color: #a86d09;
+  background: rgba(244, 200, 105, 0.16);
+}
+
+.platform-decision strong,
+.platform-decision span {
+  display: block;
+}
+
+.platform-decision span {
+  margin-top: 4px;
+  color: var(--text-secondary);
+  font-size: 13px;
+}
+
 .prob-head {
   display: flex;
   justify-content: space-between;

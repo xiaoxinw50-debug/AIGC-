@@ -13,12 +13,12 @@
       <div class="brand">
         <p class="eyebrow">AIGC 标识治理项目 文件层留痕原型</p>
         <h1><span class="title-part">AI 图片识别</span><span class="title-part">与平台归因</span></h1>
-        <p class="hero-subtitle">低误伤优先的 AIGC 图片初筛工具：先判断 AI / real，再在高置信 AI 图中做四平台来源归因。</p>
+        <p class="hero-subtitle">低误伤优先的 AIGC 图片初筛工具：先判断 AI / real，再以开放集机制完成四平台归因或明确拒识。</p>
       </div>
       <div class="top-meta">
-        <div class="meta-pill">网页 v3 模型</div>
+        <div class="meta-pill">双路径归因</div>
         <div class="meta-pill">v4 阈值策略</div>
-        <div class="meta-pill">三档复核</div>
+        <div class="meta-pill">开放集拒识</div>
       </div>
     </header>
 
@@ -27,7 +27,7 @@
         <p class="overview-kicker">文件层留痕优先解释</p>
         <p class="overview-text">
           系统先判断图片是否属于 AI 生成，再在已采样平台 <code>文心一言</code>、<code>通义千问</code>、<code>即梦AI</code>、<code>智谱 GLM-Image</code>
-          中做来源归因。当前归因主要依据导出尺寸、图像格式、EXIF、alpha 通道和信息字段差异，而不是单纯内容风格。
+          中做来源归因。原生模型读取导出链路，抗传播模型读取视觉与频域统计；证据不足时输出未知平台，而不是强制四选一。
         </p>
       </div>
       <div class="overview-stats" aria-label="模型校准摘要">
@@ -36,8 +36,8 @@
           <span class="stat-v">网页端采用保守阈值，优先避免把真实图直接判为 AI</span>
         </div>
         <div class="stat-card">
-          <span class="stat-k">复核区</span>
-          <span class="stat-v">边界图片进入人工复核，不在页面上强行给结论</span>
+          <span class="stat-k">拒识机制</span>
+          <span class="stat-v">低置信、模型冲突或分布漂移时输出未知平台</span>
         </div>
         <div class="stat-card">
           <span class="stat-k">可解释</span>
@@ -59,13 +59,13 @@
       </div>
       <div class="workflow-step">
         <span>3</span>
-        <strong>平台归因</strong>
-        <p>只有高置信 AI 图才输出文心一言、通义千问、即梦AI、智谱 GLM-Image 概率。</p>
+        <strong>开放集归因</strong>
+        <p>双模型融合后，通过置信阈值才接受四平台归因，否则转入人工复核。</p>
       </div>
       <div class="workflow-step">
         <span>4</span>
-        <strong>导出证据</strong>
-        <p>可导出单张报告、批量 CSV 和本地识别历史。</p>
+        <strong>复核留档</strong>
+        <p>按自动通过、人工复核和高风险核验分流，可建立复核案件并导出。</p>
       </div>
     </section>
 
@@ -144,7 +144,8 @@
           <li>是否存在 alpha 通道</li>
           <li>EXIF 是否存在</li>
           <li>信息键数量与导出链路差异</li>
-          <li>边界样本进入复核，不直接给平台结论</li>
+          <li>边缘、噪声和高频能量等抗传播信号</li>
+          <li>低置信或分布漂移时拒绝平台归因</li>
         </ol>
       </aside>
     </section>
@@ -158,7 +159,7 @@
         <div id="resultSummary" class="empty">尚未识别</div>
       </article>
       <article class="panel panel-probabilities">
-        <h2>平台概率</h2>
+        <h2>平台候选概率</h2>
         <div id="platformProbabilities" class="empty">尚未识别</div>
       </article>
       <article class="panel panel-signals">
@@ -171,6 +172,30 @@
       </article>
     </section>
 
+    <section class="panel review-workbench">
+      <div class="panel-toolbar">
+        <div>
+          <h2>人工复核与审计</h2>
+          <p class="panel-note">模型只负责风险分流。复核队列保存文件哈希、判断依据和人工结论，默认不保存原始图片。</p>
+        </div>
+        <div class="toolbar-actions">
+          <button id="refreshReviewBtn" type="button" class="ghost-btn">刷新队列</button>
+          <a class="ghost-btn link-btn" href="/api/reviews/export.csv">导出复核 CSV</a>
+        </div>
+      </div>
+      <div class="risk-routing" aria-label="风险分流规则">
+        <div class="risk-route is-low"><strong>自动通过</strong><span>AI 概率进入真实区，不输出平台</span></div>
+        <div class="risk-route is-review"><strong>人工复核</strong><span>二分类边界、未知平台、模型冲突或分布漂移</span></div>
+        <div class="risk-route is-high"><strong>高风险核验</strong><span>AI 高置信且平台归因通过开放集阈值</span></div>
+      </div>
+      <div id="reviewSubmitBox" class="review-submit empty">完成识别后可将当前结果提交复核</div>
+      <div class="review-queue-head">
+        <h3>最近复核案件</h3>
+        <span>人工结论可覆盖模型建议，但不会改写原始模型输出</span>
+      </div>
+      <div id="reviewQueueList" class="empty">正在读取复核队列</div>
+    </section>
+
     <section class="panel info-panel">
       <h2>如何理解这个结果</h2>
       <div class="info-grid">
@@ -180,7 +205,7 @@
         </div>
         <div class="info-card">
           <h3>平台归因</h3>
-          <p>只有当图片先被判为 generated 时，系统才继续给出平台归因结果。</p>
+          <p>只有当图片先被判为 generated，且双路径融合结果通过置信度与漂移检验时，系统才接受平台归因。</p>
         </div>
         <div class="info-card">
           <h3>文件层留痕</h3>
@@ -188,7 +213,7 @@
         </div>
         <div class="info-card">
           <h3>边界样本</h3>
-          <p>证件照、证书照、白底商品图和截图容易被模型误读为规整生成图，因此页面默认保留复核区，不直接作为处罚或退款依据。</p>
+          <p>证件照、白底商品图、截图、未知模型和二次处理图可能偏离训练分布，因此默认进入复核，不直接作为处罚或退款依据。</p>
         </div>
       </div>
     </section>

@@ -13,7 +13,8 @@ const PLATFORM_NAME_MAP = {
   PLT02: '通义千问',
   PLT03: '即梦AI / 字节系文生图',
   PLT05: '智谱GLM-Image / 清言相关文生图',
-  real: '真实图片'
+  real: '真实图片',
+  unknown_platform: '未知平台或证据不足'
 };
 
 let samples = [];
@@ -40,6 +41,9 @@ function resultDelivery(result) {
   if (result.binary_label === 'real') {
     return ['真实图低风险', '当前未发现强 AI 生成留痕，不继续输出平台来源。'];
   }
+  if (result.platform_accepted === false || result.platform_label === 'unknown_platform') {
+    return ['AI 图像，来源待复核', `当前最高候选为 ${result.platform_candidate_text || '未知'}，但未通过开放集接受条件。`];
+  }
   return ['高置信 AI 生成', `在已采样平台中给出 ${result.platform_label_text} 作为来源线索。`];
 }
 
@@ -48,6 +52,12 @@ function resultUsageGuide(result) {
     return [
       ['建议下一步', '保留原图文件、订单上下文和沟通记录。'],
       ['结果边界', '低风险结果不等同于对图片真实性作绝对保证。']
+    ];
+  }
+  if (result.platform_accepted === false || result.platform_label === 'unknown_platform') {
+    return [
+      ['建议下一步', '补充原始导出文件、生成记录、截图前文件或多角度证据。'],
+      ['结果边界', '候选概率没有通过开放集接受条件，不能据此断定来源平台。']
     ];
   }
   return [
@@ -75,7 +85,7 @@ function renderResult(sample) {
           <strong>${escapeHtml(result.platform_label_text)}</strong>
         </div>
       </div>
-      <div><strong>平台来源：</strong>${escapeHtml(result.platform_label_text)}</div>
+      <div><strong>平台交付：</strong>${escapeHtml(result.platform_label_text)}</div>
       <div class="sample-note"><strong>样本说明：</strong>${escapeHtml(sample.summary)}</div>
       <div class="result-delivery">
         <span>检测交付</span>
@@ -105,7 +115,12 @@ function renderResult(sample) {
       </div>
     `)
     .join('');
-  platformProbabilities.innerHTML = probabilityRows;
+  const platformDecision = result.binary_label === 'generated'
+    ? result.platform_accepted
+      ? `<div class="platform-decision"><strong>归因已接受</strong><span>融合置信度 ${((result.platform_confidence || 0) * 100).toFixed(2)}%</span></div>`
+      : `<div class="platform-decision is-rejected"><strong>开放集拒识</strong><span>下列数值是候选概率，不是平台定论。</span></div>`
+    : '';
+  platformProbabilities.innerHTML = platformDecision + probabilityRows;
 
   signalSnapshot.innerHTML = `
     <div class="signal-list">

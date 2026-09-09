@@ -1,22 +1,27 @@
 from __future__ import annotations
 
 import csv
+import hashlib
 import io
+import json
 import os
 import tempfile
 from pathlib import Path
 
-from flask import Flask, jsonify, render_template, request
+from flask import Flask, Response, jsonify, render_template, request
 from PIL import Image
 
 from model_payload import ensure_model_artifacts
 from origin_utils import load_bundle, predict_one
+from review_store import create_case, database_path, export_csv, init_db, list_cases, persistence_mode, update_case
 
 
 ROOT = Path(__file__).resolve().parent
 MODEL_DIR = ensure_model_artifacts(ROOT)
 BINARY_BUNDLE = MODEL_DIR / "binary_model_bundle.joblib"
 PLATFORM_BUNDLE = MODEL_DIR / "platform_model_bundle.joblib"
+ROBUST_PLATFORM_BUNDLE = MODEL_DIR / "platform_robust_model_bundle.joblib"
+PLATFORM_OPEN_SET_CONFIG = MODEL_DIR / "platform_open_set_config.json"
 BINARY_TOP = MODEL_DIR / "binary_top_features.csv"
 PLATFORM_TOP = MODEL_DIR / "platform_top_features.csv"
 THRESHOLD_PROFILES_CSV = MODEL_DIR / "web_threshold_profiles_v4.csv"
@@ -26,6 +31,13 @@ app.config["MAX_CONTENT_LENGTH"] = 16 * 1024 * 1024
 
 binary_bundle = load_bundle(BINARY_BUNDLE)
 platform_bundle = load_bundle(PLATFORM_BUNDLE)
+robust_platform_bundle = load_bundle(ROBUST_PLATFORM_BUNDLE) if ROBUST_PLATFORM_BUNDLE.exists() else None
+platform_open_set_config = (
+    json.loads(PLATFORM_OPEN_SET_CONFIG.read_text(encoding="utf-8"))
+    if PLATFORM_OPEN_SET_CONFIG.exists()
+    else {}
+)
+init_db()
 
 PROFILE_UI_NOTES = {
     "operational_low_false_ai": "默认展示档：优先避免真实图被误判为 AI，复核负担最低。",
@@ -166,6 +178,7 @@ def platform_label_text(platform_id: str) -> str:
         "PLT05": "智谱GLM-Image / 清言相关文生图（PLT05）",
         "real": "真实图片",
         "uncertain": "需人工复核",
+        "unknown_platform": "未知平台或证据不足",
     }
     return mapping.get(platform_id, platform_id)
 
@@ -183,7 +196,17 @@ def format_signal_snapshot(snapshot: dict[str, float]) -> list[dict[str, str]]:
         {"label": "EXIF", "value": "有" if snapshot["exif_present"] >= 0.5 else "无"},
         {"label": "信息键数量", "value": str(int(snapshot["info_key_count"]))},
         {"label": "通道数", "value": str(int(snapshot["band_count"]))},
+        {"label": "边缘强度", "value": f"{snapshot.get('edge_mean', 0.0):.4f}"},
+        {"label": "高频占比", "value": f"{snapshot.get('high_freq_ratio', 0.0):.6f}"},
     ]
+
+
+PLATFORM_REJECTION_TEXT = {
+    "confidence_below_threshold": "融合后的最高平台概率未达到接受阈值",
+    "margin_below_threshold": "第一候选与第二候选差距过小",
+    "model_disagreement": "文件层模型与抗传播模型判断不一致",
+    "feature_distribution_shift": "图片特征偏离当前训练分布",
+}
 
 
 def build_rationale(prediction: dict) -> list[str]:
@@ -203,11 +226,18 @@ def build_rationale(prediction: dict) -> list[str]:
             f"当前 AI 生成概率为 {prediction['pred_prob_generated']:.4f}，落在 {prediction['real_threshold']:.2f} 到 {prediction['generated_threshold']:.2f} 的复核区间内。系统不会把这类图片硬判为 AI，也不会继续做平台归因。"
         )
         lines.append("证件照、白底商品图、截图和压缩后的真实图容易呈现背景干净、留痕较少、尺寸规整等特征，当前版本将这类边界样本优先交给人工复核。")
-    else:
+    elif prediction.get("platform_accepted"):
         lines.append(
-            f"当前模型先判断为 generated，概率为 {prediction['pred_prob_generated']:.4f}，达到 AI 阈值 {prediction['generated_threshold']:.2f}；随后在已采样平台中做归因，当前给出的平台是 {platform_label_text(prediction['pred_final_label'])}。"
+            f"当前模型先判断为 generated，概率为 {prediction['pred_prob_generated']:.4f}，达到 AI 阈值 {prediction['generated_threshold']:.2f}；两条归因证据融合后的最高概率为 {prediction['platform_confidence']:.4f}，达到开放集接受阈值，因此给出 {platform_label_text(prediction['pred_final_label'])}。"
         )
-    lines.append("系统当前主要依赖文件层与导出链路信号，并结合增强视觉统计特征，而不是只看图片语义内容。")
+    else:
+        reasons = [PLATFORM_REJECTION_TEXT.get(code, code) for code in prediction.get("platform_rejection_reasons", [])]
+        lines.append(
+            f"图片已进入 generated 区，但平台归因未通过开放集接受条件。当前最高候选为 {platform_label_text(prediction['pred_platform_if_generated'])}，融合概率 {prediction['platform_confidence']:.4f}；系统输出未知平台并进入人工复核。"
+        )
+        if reasons:
+            lines.append("本次拒识原因：" + "；".join(reasons) + "。")
+    lines.append("平台归因同时使用原生导出模型和抗传播模型：前者侧重文件层与导出链路，后者侧重颜色、边缘、噪声与频域统计，而不是只看图片语义内容。")
 
     signal_parts = []
     if snap["is_png"] >= 0.5:
@@ -222,8 +252,12 @@ def build_rationale(prediction: dict) -> list[str]:
         signal_parts.append(f"info 字段数 {int(snap['info_key_count'])}")
     signal_parts.append(f"尺寸 {int(snap['orig_width'])}x{int(snap['orig_height'])}")
     lines.append("这张图当前被模型重点利用的直接信号包括：" + "、".join(signal_parts) + "。")
-    if prediction["pred_binary_label"] == "generated":
-        lines.append("因此，这个平台归因结果应理解为当前采样平台导出特征下的归因原型，不应表述成开放世界稳定来源鉴定。")
+    if prediction["pred_binary_label"] == "generated" and prediction.get("platform_accepted"):
+        lines.append(
+            f"文件层模型候选为 {platform_label_text(prediction['platform_native_pred'])}，抗传播模型候选为 {platform_label_text(prediction['platform_robust_pred'])}；特征漂移分数为 {prediction['platform_drift_score']:.3f}。结果仍是审核线索，不是单独定责依据。"
+        )
+    elif prediction["pred_binary_label"] == "generated":
+        lines.append("候选平台概率仅用于安排调查顺序；在开放集拒识状态下，页面不会把最高候选包装成确定来源。")
     else:
         lines.append("因此，本次结果应理解为低成本初筛；真实证件照、证书照和白底商品图等边界样本仍应保留人工复核。")
     return lines
@@ -249,10 +283,17 @@ def health():
             "status": "ok",
             "binary_model": str(BINARY_BUNDLE.relative_to(ROOT)),
             "platform_model": str(PLATFORM_BUNDLE.relative_to(ROOT)),
+            "robust_platform_model": str(ROBUST_PLATFORM_BUNDLE.relative_to(ROOT)) if ROBUST_PLATFORM_BUNDLE.exists() else None,
+            "platform_open_set": platform_open_set_config.get("version", "disabled"),
             "generated_threshold": GENERATED_THRESHOLD,
             "real_threshold": REAL_THRESHOLD,
             "default_policy_profile": DEFAULT_POLICY_ID,
             "policy_profiles": POLICY_PROFILES,
+            "review_queue": {
+                "persistence_mode": persistence_mode(),
+                "database_path": str(database_path()),
+                "stores_original_images": False,
+            },
         }
     )
 
@@ -286,6 +327,8 @@ def predict_api():
             temp_path,
             binary_bundle,
             platform_bundle,
+            robust_platform_bundle,
+            platform_open_set_config,
             generated_threshold=float(policy["generated_threshold"]),
             real_threshold=float(policy["real_threshold"]),
         )
@@ -296,6 +339,7 @@ def predict_api():
 
     signal_snapshot = format_signal_snapshot(prediction["feature_snapshot"])
     rationale = build_rationale(prediction)
+    file_sha256 = hashlib.sha256(raw).hexdigest()
 
     return jsonify(
         {
@@ -312,6 +356,37 @@ def predict_api():
                 "platform_probabilities": prediction["pred_platform_probabilities"]
                 if prediction["pred_binary_label"] == "generated"
                 else {},
+                "platform_candidate": prediction["pred_platform_if_generated"]
+                if prediction["pred_binary_label"] == "generated"
+                else "",
+                "platform_candidate_text": platform_label_text(prediction["pred_platform_if_generated"])
+                if prediction["pred_binary_label"] == "generated"
+                else "",
+                "platform_accepted": prediction["platform_accepted"]
+                if prediction["pred_binary_label"] == "generated"
+                else False,
+                "platform_confidence": prediction["platform_confidence"],
+                "platform_margin": prediction["platform_margin"],
+                "platform_model_agreement": prediction["platform_model_agreement"],
+                "platform_native_label": prediction["platform_native_pred"],
+                "platform_robust_label": prediction["platform_robust_pred"],
+                "platform_drift_score": prediction["platform_drift_score"],
+                "platform_drift_flag": prediction["platform_drift_flag"],
+                "platform_rejection_reasons": prediction["platform_rejection_reasons"],
+                "platform_rejection_explanations": [
+                    PLATFORM_REJECTION_TEXT.get(code, code)
+                    for code in prediction["platform_rejection_reasons"]
+                ],
+                "platform_open_set_version": prediction["platform_open_set_version"],
+                "platform_open_set_thresholds": {
+                    "confidence": prediction["platform_min_confidence"],
+                    "margin": prediction["platform_min_margin"],
+                    "require_agreement": prediction["platform_require_agreement"],
+                },
+                "risk_level": prediction["risk_level"],
+                "risk_text": prediction["risk_text"],
+                "file_sha256": file_sha256,
+                "original_image_retained": False,
                 "signal_snapshot": signal_snapshot,
                 "rationale": rationale,
                 "thresholds": {
@@ -331,6 +406,52 @@ def predict_api():
             "global_binary_features": GLOBAL_BINARY_FEATURES,
             "global_platform_features": GLOBAL_PLATFORM_FEATURES,
         }
+    )
+
+
+@app.get("/api/reviews")
+def review_list_api():
+    try:
+        limit = int(request.args.get("limit", "50"))
+    except ValueError:
+        limit = 50
+    return jsonify({"status": "ok", "cases": list_cases(limit=limit, status=request.args.get("status", ""))})
+
+
+@app.post("/api/reviews")
+def review_create_api():
+    payload = request.get_json(silent=True) or {}
+    required = ["file_name", "file_sha256", "binary_label", "generated_probability", "risk_level"]
+    missing = [key for key in required if payload.get(key) in (None, "")]
+    if missing:
+        return jsonify({"status": "error", "message": f"missing fields: {', '.join(missing)}"}), 400
+    case = create_case(payload)
+    return jsonify(
+        {
+            "status": "ok",
+            "case": case,
+            "privacy_note": "复核队列仅保存文件哈希、模型证据和人工备注，不保存原始图片。",
+        }
+    ), 201
+
+
+@app.patch("/api/reviews/<case_id>")
+def review_update_api(case_id: str):
+    try:
+        case = update_case(case_id, request.get_json(silent=True) or {})
+    except ValueError as exc:
+        return jsonify({"status": "error", "message": str(exc)}), 400
+    if case is None:
+        return jsonify({"status": "error", "message": "review case not found"}), 404
+    return jsonify({"status": "ok", "case": case})
+
+
+@app.get("/api/reviews/export.csv")
+def review_export_api():
+    return Response(
+        export_csv(),
+        mimetype="text/csv",
+        headers={"Content-Disposition": "attachment; filename=aigc_review_queue.csv"},
     )
 
 

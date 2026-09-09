@@ -22,6 +22,9 @@ const progressBar = document.getElementById('progressBar');
 const policyInputs = Array.from(document.querySelectorAll('input[name="policyProfile"]'));
 const policyMetricPreview = document.getElementById('policyMetricPreview');
 const policyProfileDataEl = document.getElementById('policyProfileData');
+const reviewSubmitBox = document.getElementById('reviewSubmitBox');
+const reviewQueueList = document.getElementById('reviewQueueList');
+const refreshReviewBtn = document.getElementById('refreshReviewBtn');
 
 const HISTORY_KEY = 'aigc-trace-history-v1';
 const MAX_FILE_SIZE = 16 * 1024 * 1024;
@@ -33,7 +36,8 @@ const PLATFORM_NAME_MAP = {
   PLT03: '即梦AI / 字节系文生图',
   PLT05: '智谱GLM-Image / 清言相关文生图',
   real: '真实图片',
-  uncertain: '需人工复核'
+  uncertain: '需人工复核',
+  unknown_platform: '未知平台或证据不足'
 };
 const policyProfileData = parsePolicyProfiles();
 
@@ -188,6 +192,10 @@ function clearResult() {
   platformProbabilities.innerHTML = emptyState('等待 AI 高置信结果', '只有进入 AI 区的图片才展示四平台概率。');
   signalSnapshot.innerHTML = emptyState('等待读取文件层信号', '系统会提取格式、尺寸、EXIF、alpha 通道和 info 字段。');
   rationaleBox.innerHTML = emptyState('等待生成解释', '解释会说明模型依据、边界样本处理和平台归因限制。');
+  if (reviewSubmitBox) {
+    reviewSubmitBox.classList.add('empty');
+    reviewSubmitBox.innerHTML = emptyState('尚无待提交结果', '完成识别后，可将文件哈希、模型证据和备注提交人工复核。');
+  }
   lastSingleResult = null;
   lastSingleFileName = '';
   setProgress(0);
@@ -265,8 +273,12 @@ function writeHistory(rows) {
 
 function decisionTone(row) {
   if (row.binary_label === 'real') return 'real';
-  if (row.binary_label === 'uncertain') return 'uncertain';
+  if (row.binary_label === 'uncertain' || row.risk_level === 'review') return 'uncertain';
   return 'ai';
+}
+
+function platformAttributionAccepted(result) {
+  return result.binary_label === 'generated' && result.platform_accepted !== false && result.platform_label !== 'unknown_platform';
 }
 
 function decisionAdvice(result) {
@@ -280,6 +292,12 @@ function decisionAdvice(result) {
     return {
       title: '需人工复核',
       body: '系统交付需人工复核结果，不输出确定的 AI / real 标签和平台来源。'
+    };
+  }
+  if (!platformAttributionAccepted(result)) {
+    return {
+      title: 'AI 图像，来源待复核',
+      body: `系统交付高置信 AI 生成结果，但没有把图片强制归入四个平台。当前最高候选为 ${result.platform_candidate_text || '未知'}，仅用于安排核验顺序。`
     };
   }
   return {
@@ -310,6 +328,18 @@ function resultUsageGuide(result) {
       {
         title: '结果边界',
         body: '图片特征处在模型复核区，系统不输出确定的 AI 判断，也不继续进行平台归因。'
+      }
+    ];
+  }
+  if (!platformAttributionAccepted(result)) {
+    return [
+      {
+        title: '建议下一步',
+        body: '补充原始导出文件、生成记录、截图前文件或多角度证据，并将本次结果提交人工复核。'
+      },
+      {
+        title: '结果边界',
+        body: '系统只确认 AI 风险较高；候选概率没有通过开放集接受条件，不能据此断定来源平台。'
       }
     ];
   }
@@ -380,6 +410,11 @@ function toHistoryRecord(fileName, result) {
     decision_text: result.decision_text,
     platform_label: result.platform_label,
     platform_label_text: result.platform_label_text,
+    platform_candidate: result.platform_candidate,
+    platform_candidate_text: result.platform_candidate_text,
+    platform_accepted: result.platform_accepted,
+    risk_level: result.risk_level,
+    risk_text: result.risk_text,
     generated_probability: result.generated_probability,
     generated_probability_pct: asPercent(result.generated_probability),
     timestamp: new Date().toLocaleString('zh-CN')
@@ -410,7 +445,7 @@ function renderSingleReportHtml(fileName, result) {
     .join('');
   const platformBlock = platformRows
     ? `<table>
-          <thead><tr><th>标签</th><th>概率</th></tr></thead>
+          <thead><tr><th>候选平台</th><th>融合概率</th></tr></thead>
           <tbody>${platformRows}</tbody>
         </table>`
     : '<p class="empty">当前未进入平台归因。只有 AI 生成概率达到阈值时，系统才输出四平台概率。</p>';
@@ -455,7 +490,8 @@ function renderSingleReportHtml(fileName, result) {
       <p>文件名：${escapeHtml(fileName)}</p>
       <div class="meta">
         <span class="pill">AI / real：${escapeHtml(decisionLabel(result))}</span>
-        <span class="pill">最终标签：${escapeHtml(result.platform_label_text)}</span>
+        <span class="pill">平台交付：${escapeHtml(result.platform_label_text)}</span>
+        <span class="pill">风险分流：${escapeHtml(result.risk_text || '未分流')}</span>
         <span class="pill">策略：${escapeHtml(result.policy_profile_name || getSelectedPolicyName())}</span>
         <span class="pill">AI 概率：${asPercent(result.generated_probability)}</span>
         <span class="pill">导出时间：${escapeHtml(new Date().toLocaleString('zh-CN'))}</span>
@@ -474,7 +510,7 @@ function renderSingleReportHtml(fileName, result) {
     </section>
     <section class="grid">
       <article class="card">
-        <h2>平台概率</h2>
+        <h2>平台候选概率</h2>
         ${platformBlock}
       </article>
       <article class="card">
@@ -606,6 +642,7 @@ function renderResult(result) {
   const finalText = result.binary_label === 'generated'
     ? result.platform_label_text
     : badgeText;
+  const riskText = result.risk_text || (result.binary_label === 'real' ? '自动通过' : result.binary_label === 'uncertain' ? '人工复核' : '高风险核验');
 
   resultSummary.innerHTML = `
     <div class="result-card is-${tone}">
@@ -623,8 +660,8 @@ function renderResult(result) {
           <strong>${escapeHtml(finalText)}</strong>
         </div>
         <div class="metric-tile">
-          <span>识别策略</span>
-          <strong>${escapeHtml(result.policy_profile_name || getSelectedPolicyName())}</strong>
+          <span>风险分流</span>
+          <strong>${escapeHtml(riskText)}</strong>
         </div>
       </div>
       <div class="probability-meter" aria-label="AI 生成概率区间">
@@ -675,10 +712,32 @@ function renderResult(result) {
       `;
     })
     .join('');
-  platformProbabilities.innerHTML = probabilityRows || `
+  const platformDecisionBanner = result.binary_label === 'generated'
+    ? platformAttributionAccepted(result)
+      ? `<div class="platform-decision is-accepted">
+          <strong>归因已接受</strong>
+          <span>融合置信度 ${asPercent(result.platform_confidence)}，文件层模型与抗传播模型${result.platform_model_agreement ? '判断一致' : '给出不同候选'}。</span>
+        </div>`
+      : `<div class="platform-decision is-rejected">
+          <strong>开放集拒识</strong>
+          <span>${escapeHtml((result.platform_rejection_explanations || ['平台证据不足']).join('；'))}。下列数值是候选概率，不是平台定论。</span>
+        </div>`
+    : '';
+  const platformDiagnostics = result.binary_label === 'generated'
+    ? `<div class="platform-diagnostics">
+        <span>最高候选 ${escapeHtml(result.platform_candidate_text || '未知')}</span>
+        <span>前两名差值 ${asPercent(result.platform_margin)}</span>
+        <span>漂移分数 ${Number(result.platform_drift_score || 0).toFixed(3)}${result.platform_drift_flag ? '，已触发漂移复核' : ''}</span>
+      </div>`
+    : '';
+  platformProbabilities.innerHTML = probabilityRows ? `
+    ${platformDecisionBanner}
+    ${platformDiagnostics}
+    <div class="probability-list">${probabilityRows}</div>
+  ` : `
     <div class="platform-gate">
       <strong>未进入平台归因</strong>
-      <p>只有图片先被判为高置信 AI 生成时，系统才展示四平台概率；真实图和复核图不输出平台来源，避免制造过度结论。</p>
+      <p>只有图片先被判为高置信 AI 生成时，系统才计算平台候选概率；真实图和二分类复核图不输出平台来源。</p>
     </div>
   `;
 
@@ -700,6 +759,163 @@ function renderResult(result) {
       `).join('')}
     </div>
   `;
+
+  renderReviewSubmission(result);
+}
+
+function renderReviewSubmission(result) {
+  if (!reviewSubmitBox) return;
+  reviewSubmitBox.classList.remove('empty');
+  const riskText = result.risk_text || '人工复核';
+  const platformText = result.binary_label === 'generated'
+    ? platformAttributionAccepted(result)
+      ? result.platform_label_text
+      : `${result.platform_candidate_text || '未知'}，尚未接受`
+    : '未进入平台归因';
+  reviewSubmitBox.innerHTML = `
+    <div class="review-submit-copy">
+      <span>当前分流</span>
+      <strong>${escapeHtml(riskText)}</strong>
+      <p>AI 概率 ${asPercent(result.generated_probability)}；平台线索 ${escapeHtml(platformText)}。提交后只保存文件哈希和本页证据。</p>
+    </div>
+    <label class="review-note-field">
+      <span>补充说明</span>
+      <textarea id="reviewUserNote" rows="3" maxlength="2000" placeholder="可填写订单号、图片来源、需要核验的问题或已补充的证据"></textarea>
+    </label>
+    <button id="submitReviewBtn" type="button">提交人工复核</button>
+  `;
+}
+
+function reviewDecisionText(value) {
+  const mapping = {
+    confirmed_ai: '人工确认 AI',
+    confirmed_real: '人工确认真实',
+    insufficient_evidence: '证据不足',
+    '': '尚无人工结论'
+  };
+  return mapping[value] || value;
+}
+
+function reviewStatusText(value) {
+  const mapping = { pending: '待复核', reviewing: '核验中', resolved: '已完成' };
+  return mapping[value] || value;
+}
+
+function riskLevelText(value) {
+  const mapping = { low: '自动通过', review: '人工复核', high: '高风险核验' };
+  return mapping[value] || value;
+}
+
+async function loadReviewQueue() {
+  if (!reviewQueueList || isStaticPreviewMode()) return;
+  reviewQueueList.innerHTML = emptyState('正在读取', '正在同步最近复核案件。');
+  try {
+    const response = await fetch('/api/reviews?limit=20');
+    const data = await response.json();
+    if (!response.ok || data.status !== 'ok') throw new Error(data.message || '读取失败');
+    renderReviewQueue(data.cases || []);
+  } catch (error) {
+    reviewQueueList.innerHTML = emptyState('复核队列暂不可用', error.message);
+  }
+}
+
+function renderReviewQueue(cases) {
+  if (!reviewQueueList) return;
+  if (!cases.length) {
+    reviewQueueList.classList.add('empty');
+    reviewQueueList.innerHTML = emptyState('尚无复核案件', '提交当前识别结果后，案件会在这里显示。');
+    return;
+  }
+  reviewQueueList.classList.remove('empty');
+  reviewQueueList.innerHTML = `
+    <div class="review-case-list">
+      ${cases.map(item => `
+        <article class="review-case" data-case-id="${escapeHtml(item.case_id)}">
+          <div class="review-case-main">
+            <div class="review-case-title">
+              <strong>${escapeHtml(item.case_id)}</strong>
+              <span class="review-status is-${escapeHtml(item.status)}">${escapeHtml(reviewStatusText(item.status))}</span>
+            </div>
+            <p>${escapeHtml(item.file_name)}，AI 概率 ${asPercent(item.generated_probability)}，风险分流 ${escapeHtml(riskLevelText(item.risk_level))}</p>
+            <div class="review-case-evidence">
+              <span>平台交付 ${escapeHtml(platformDisplayName(item.platform_label))}</span>
+              <span>最高候选 ${escapeHtml(platformDisplayName(item.platform_candidate || '未知'))}</span>
+              <span>${escapeHtml(reviewDecisionText(item.reviewer_decision))}</span>
+            </div>
+          </div>
+          <div class="review-case-actions">
+            <input class="reviewer-note-input" type="text" maxlength="2000" value="${escapeHtml(item.reviewer_note || '')}" placeholder="填写人工核验说明">
+            <div>
+              <button type="button" class="ghost-btn" data-review-action="reviewing">开始核验</button>
+              <button type="button" class="ghost-btn" data-review-action="confirmed_ai">确认 AI</button>
+              <button type="button" class="ghost-btn" data-review-action="confirmed_real">确认真实</button>
+              <button type="button" class="ghost-btn" data-review-action="insufficient_evidence">证据不足</button>
+            </div>
+          </div>
+        </article>
+      `).join('')}
+    </div>
+  `;
+}
+
+async function submitCurrentReview() {
+  if (!lastSingleResult) {
+    setStatus('请先完成一次识别', 'warning');
+    return;
+  }
+  const payload = {
+    file_name: lastSingleFileName || getSelectedFiles()[0]?.name || 'unknown',
+    file_sha256: lastSingleResult.file_sha256,
+    binary_label: lastSingleResult.binary_label,
+    generated_probability: lastSingleResult.generated_probability,
+    platform_label: lastSingleResult.platform_label,
+    platform_candidate: lastSingleResult.platform_candidate,
+    platform_confidence: lastSingleResult.platform_confidence,
+    platform_margin: lastSingleResult.platform_margin,
+    model_agreement: lastSingleResult.platform_model_agreement,
+    drift_score: lastSingleResult.platform_drift_score,
+    risk_level: lastSingleResult.risk_level,
+    reason_codes: lastSingleResult.platform_rejection_reasons || [],
+    user_note: document.getElementById('reviewUserNote')?.value || ''
+  };
+  const button = document.getElementById('submitReviewBtn');
+  if (button) button.disabled = true;
+  try {
+    const response = await fetch('/api/reviews', {
+      method: 'POST',
+      headers: { 'Content-Type': 'application/json' },
+      body: JSON.stringify(payload)
+    });
+    const data = await response.json();
+    if (!response.ok || data.status !== 'ok') throw new Error(data.message || '提交失败');
+    setStatus(`已创建复核案件 ${data.case.case_id}，原始图片未被保存。`, 'success');
+    await loadReviewQueue();
+  } catch (error) {
+    setStatus(`复核提交失败：${error.message}`, 'error');
+  } finally {
+    if (button) button.disabled = false;
+  }
+}
+
+async function updateReviewCase(caseElement, action) {
+  const caseId = caseElement.dataset.caseId;
+  const reviewerNote = caseElement.querySelector('.reviewer-note-input')?.value || '';
+  const payload = action === 'reviewing'
+    ? { status: 'reviewing', reviewer_decision: '', reviewer_note: reviewerNote }
+    : { status: 'resolved', reviewer_decision: action, reviewer_note: reviewerNote };
+  try {
+    const response = await fetch(`/api/reviews/${encodeURIComponent(caseId)}`, {
+      method: 'PATCH',
+      headers: { 'Content-Type': 'application/json' },
+      body: JSON.stringify(payload)
+    });
+    const data = await response.json();
+    if (!response.ok || data.status !== 'ok') throw new Error(data.message || '更新失败');
+    setStatus(`复核案件 ${caseId} 已更新为${reviewStatusText(data.case.status)}。`, 'success');
+    await loadReviewQueue();
+  } catch (error) {
+    setStatus(`复核更新失败：${error.message}`, 'error');
+  }
 }
 
 async function requestPredict(file) {
@@ -861,6 +1077,24 @@ clearHistoryBtn.addEventListener('click', () => {
   setStatus('历史记录已清空', 'success');
 });
 
+if (reviewSubmitBox) {
+  reviewSubmitBox.addEventListener('click', event => {
+    if (event.target.closest('#submitReviewBtn')) submitCurrentReview();
+  });
+}
+
+if (refreshReviewBtn) {
+  refreshReviewBtn.addEventListener('click', loadReviewQueue);
+}
+
+if (reviewQueueList) {
+  reviewQueueList.addEventListener('click', event => {
+    const button = event.target.closest('[data-review-action]');
+    const caseElement = event.target.closest('.review-case');
+    if (button && caseElement) updateReviewCase(caseElement, button.dataset.reviewAction);
+  });
+}
+
 policyInputs.forEach(input => {
   input.addEventListener('change', () => {
     clearResult();
@@ -914,3 +1148,4 @@ renderBatchResults();
 renderHistory();
 renderPolicyMetricPreview();
 clearResult();
+loadReviewQueue();

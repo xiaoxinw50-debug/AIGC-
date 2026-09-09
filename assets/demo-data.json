@@ -1,26 +1,39 @@
 {
   "samples": [
     {
-      "id": "plt05-pr102",
-      "title": "智谱GLM-Image / PR102 / 虫子异物",
-      "subtitle": "第一轮重点样本中风险最高的一条",
-      "summary": "无可见角标，提示服从强，手机客诉图观感最接近真实。",
-      "image": "./assets/samples/plt05_pr102.png",
+      "id": "plt01-native",
+      "title": "文心一言原生导出图",
+      "subtitle": "开放集归因已接受",
+      "summary": "原生导出图同时保留文件层留痕和视觉统计特征，用于展示系统何时接受平台归因。",
+      "image": "./assets/samples/plt01_native_accepted.png",
       "result": {
         "binary_label": "generated",
-        "platform_label": "PLT05",
-        "platform_label_text": "智谱GLM-Image / 清言相关文生图（PLT05）",
-        "generated_probability": 0.99805259,
+        "decision_status": "generated",
+        "decision_text": "AI 生成",
+        "generated_probability": 1.0,
+        "platform_label": "PLT01",
+        "platform_label_text": "文心一言（PLT01）",
+        "platform_candidate": "PLT01",
+        "platform_candidate_text": "文心一言（PLT01）",
+        "platform_accepted": true,
+        "platform_confidence": 0.99229971,
+        "platform_margin": 0.98753384,
+        "platform_model_agreement": true,
+        "platform_drift_score": 0.17047555,
+        "platform_drift_flag": false,
+        "platform_rejection_explanations": [],
+        "risk_level": "high",
+        "risk_text": "高风险核验",
         "platform_probabilities": {
-          "PLT01": 0.009357227982000435,
-          "PLT02": 0.012544317862754981,
-          "PLT03": 0.002384974257630431,
-          "PLT05": 0.9757134798976141
+          "PLT01": 0.9922997097840512,
+          "PLT02": 0.002844823971173151,
+          "PLT03": 0.004765872218528227,
+          "PLT05": 8.959402624720892e-05
         },
         "signal_snapshot": [
           {
             "label": "原始尺寸",
-            "value": "1280 x 1280"
+            "value": "500 x 500"
           },
           {
             "label": "纵横比",
@@ -28,11 +41,11 @@
           },
           {
             "label": "像素规模",
-            "value": "1.638 MP"
+            "value": "0.250 MP"
           },
           {
             "label": "文件大小",
-            "value": "2753.2 KB"
+            "value": "407.1 KB"
           },
           {
             "label": "PNG",
@@ -48,7 +61,102 @@
           },
           {
             "label": "Alpha通道",
+            "value": "否"
+          },
+          {
+            "label": "EXIF",
+            "value": "无"
+          },
+          {
+            "label": "信息键数量",
+            "value": "5"
+          },
+          {
+            "label": "通道数",
+            "value": "3"
+          },
+          {
+            "label": "边缘强度",
+            "value": "0.0872"
+          },
+          {
+            "label": "高频占比",
+            "value": "0.001019"
+          }
+        ],
+        "rationale": [
+          "当前使用运营低误伤策略：真实阈值 0.50，AI 阈值 0.70。默认展示档：优先避免真实图被误判为 AI，复核负担最低。",
+          "当前模型先判断为 generated，概率为 1.0000，达到 AI 阈值 0.70；两条归因证据融合后的最高概率为 0.9923，达到开放集接受阈值，因此给出 文心一言（PLT01）。",
+          "平台归因同时使用原生导出模型和抗传播模型：前者侧重文件层与导出链路，后者侧重颜色、边缘、噪声与频域统计，而不是只看图片语义内容。",
+          "这张图当前被模型重点利用的直接信号包括：PNG 导出、info 字段数 5、尺寸 500x500。",
+          "文件层模型候选为 文心一言（PLT01），抗传播模型候选为 文心一言（PLT01）；特征漂移分数为 0.170。结果仍是审核线索，不是单独定责依据。"
+        ]
+      }
+    },
+    {
+      "id": "plt05-pr102",
+      "title": "智谱GLM-Image 售后异物图",
+      "subtitle": "高置信 AI，平台来源待复核",
+      "summary": "AI 判断很强，但传播后的文件层与抗传播证据没有达到平台接受阈值，系统不会强制四选一。",
+      "image": "./assets/samples/plt05_pr102.png",
+      "result": {
+        "binary_label": "generated",
+        "decision_status": "generated",
+        "decision_text": "AI 生成",
+        "generated_probability": 1.0,
+        "platform_label": "unknown_platform",
+        "platform_label_text": "未知平台或证据不足",
+        "platform_candidate": "PLT05",
+        "platform_candidate_text": "智谱GLM-Image / 清言相关文生图（PLT05）",
+        "platform_accepted": false,
+        "platform_confidence": 0.54963277,
+        "platform_margin": 0.12203199,
+        "platform_model_agreement": false,
+        "platform_drift_score": 1.92951092,
+        "platform_drift_flag": false,
+        "platform_rejection_explanations": [
+          "融合后的最高平台概率未达到接受阈值"
+        ],
+        "risk_level": "review",
+        "risk_text": "人工复核",
+        "platform_probabilities": {
+          "PLT01": 0.4276007815320839,
+          "PLT02": 0.02067989642122866,
+          "PLT03": 0.002086550642742891,
+          "PLT05": 0.5496327714039446
+        },
+        "signal_snapshot": [
+          {
+            "label": "原始尺寸",
+            "value": "1200 x 1200"
+          },
+          {
+            "label": "纵横比",
+            "value": "1.000"
+          },
+          {
+            "label": "像素规模",
+            "value": "1.440 MP"
+          },
+          {
+            "label": "文件大小",
+            "value": "2287.8 KB"
+          },
+          {
+            "label": "PNG",
             "value": "是"
+          },
+          {
+            "label": "JPEG",
+            "value": "否"
+          },
+          {
+            "label": "WEBP",
+            "value": "否"
+          },
+          {
+            "label": "Alpha通道",
+            "value": "否"
           },
           {
             "label": "EXIF",
@@ -60,33 +168,58 @@
           },
           {
             "label": "通道数",
-            "value": "4"
+            "value": "3"
+          },
+          {
+            "label": "边缘强度",
+            "value": "0.1227"
+          },
+          {
+            "label": "高频占比",
+            "value": "0.012062"
           }
         ],
         "rationale": [
-          "当前模型先判断为 generated，概率为 99.81%；随后在已采样平台中做归因，当前给出的平台是 智谱GLM-Image / 清言相关文生图（PLT05）。",
-          "平台归因当前主要依赖文件层与导出链路信号，而不是纯语义内容。",
-          "这张图当前被模型重点利用的直接信号包括：PNG 导出、带 alpha 通道、尺寸 1280x1280。",
-          "这一样本的现实意义在于：它在售后风险扩展中属于“无明显角标、拟真度更高”的高风险样本。"
+          "当前使用运营低误伤策略：真实阈值 0.50，AI 阈值 0.70。默认展示档：优先避免真实图被误判为 AI，复核负担最低。",
+          "图片已进入 generated 区，但平台归因未通过开放集接受条件。当前最高候选为 智谱GLM-Image / 清言相关文生图（PLT05），融合概率 0.5496；系统输出未知平台并进入人工复核。",
+          "本次拒识原因：融合后的最高平台概率未达到接受阈值。",
+          "平台归因同时使用原生导出模型和抗传播模型：前者侧重文件层与导出链路，后者侧重颜色、边缘、噪声与频域统计，而不是只看图片语义内容。",
+          "这张图当前被模型重点利用的直接信号包括：PNG 导出、尺寸 1200x1200。",
+          "候选平台概率仅用于安排调查顺序；在开放集拒识状态下，页面不会把最高候选包装成确定来源。"
         ]
       }
     },
     {
       "id": "plt03-pr101",
-      "title": "即梦AI / PR101 / 头发异物",
-      "subtitle": "生成成功，但风险并不高",
-      "summary": "保存图保留可见 AI 提示，且拟真度偏弱。",
+      "title": "即梦AI 售后异物图",
+      "subtitle": "高置信 AI，平台来源待复核",
+      "summary": "图片进入 AI 区，但平台融合置信度不足，候选平台只作为调查顺序线索。",
       "image": "./assets/samples/plt03_pr101.png",
       "result": {
         "binary_label": "generated",
-        "platform_label": "PLT03",
-        "platform_label_text": "即梦AI / 字节系文生图（PLT03）",
-        "generated_probability": 0.99844216,
+        "decision_status": "generated",
+        "decision_text": "AI 生成",
+        "generated_probability": 0.99588882,
+        "platform_label": "unknown_platform",
+        "platform_label_text": "未知平台或证据不足",
+        "platform_candidate": "PLT03",
+        "platform_candidate_text": "即梦AI / 字节系文生图（PLT03）",
+        "platform_accepted": false,
+        "platform_confidence": 0.50526616,
+        "platform_margin": 0.17835125,
+        "platform_model_agreement": false,
+        "platform_drift_score": 0.6577019,
+        "platform_drift_flag": false,
+        "platform_rejection_explanations": [
+          "融合后的最高平台概率未达到接受阈值"
+        ],
+        "risk_level": "review",
+        "risk_text": "人工复核",
         "platform_probabilities": {
-          "PLT01": 0.10169621372516696,
-          "PLT02": 0.24258473709447262,
-          "PLT03": 0.4785415831119036,
-          "PLT05": 0.17717746606845675
+          "PLT01": 0.3269149039502862,
+          "PLT02": 0.15585797837580212,
+          "PLT03": 0.5052661577353307,
+          "PLT05": 0.011960959938581026
         },
         "signal_snapshot": [
           {
@@ -103,7 +236,7 @@
           },
           {
             "label": "文件大小",
-            "value": "658.9 KB"
+            "value": "587.4 KB"
           },
           {
             "label": "PNG",
@@ -119,7 +252,7 @@
           },
           {
             "label": "Alpha通道",
-            "value": "是"
+            "value": "否"
           },
           {
             "label": "EXIF",
@@ -131,38 +264,63 @@
           },
           {
             "label": "通道数",
-            "value": "4"
+            "value": "3"
+          },
+          {
+            "label": "边缘强度",
+            "value": "0.0755"
+          },
+          {
+            "label": "高频占比",
+            "value": "0.001187"
           }
         ],
         "rationale": [
-          "当前模型先判断为 generated，概率为 99.84%；随后在已采样平台中做归因，当前给出的平台是 即梦AI / 字节系文生图（PLT03）。",
-          "平台归因当前主要依赖文件层与导出链路信号，而不是纯语义内容。",
-          "这张图当前被模型重点利用的直接信号包括：PNG 导出、带 alpha 通道、尺寸 720x720。",
-          "这一样本说明：平台能生成目标情节，不等于它就是最危险的平台；留痕强弱与拟真度同样重要。"
+          "当前使用运营低误伤策略：真实阈值 0.50，AI 阈值 0.70。默认展示档：优先避免真实图被误判为 AI，复核负担最低。",
+          "图片已进入 generated 区，但平台归因未通过开放集接受条件。当前最高候选为 即梦AI / 字节系文生图（PLT03），融合概率 0.5053；系统输出未知平台并进入人工复核。",
+          "本次拒识原因：融合后的最高平台概率未达到接受阈值。",
+          "平台归因同时使用原生导出模型和抗传播模型：前者侧重文件层与导出链路，后者侧重颜色、边缘、噪声与频域统计，而不是只看图片语义内容。",
+          "这张图当前被模型重点利用的直接信号包括：PNG 导出、尺寸 720x720。",
+          "候选平台概率仅用于安排调查顺序；在开放集拒识状态下，页面不会把最高候选包装成确定来源。"
         ]
       }
     },
     {
       "id": "plt05-pr105",
-      "title": "智谱GLM-Image / PR105 / 榴莲发霉",
-      "subtitle": "交易证据真实性扩展样本",
-      "summary": "属于交易证据真实性风险样本，但风险弱于 PR102 虫子异物。",
+      "title": "榴莲发霉风险样本",
+      "subtitle": "交易证据真实性扩展",
+      "summary": "该样本用于说明 AI 假图风险与平台来源判断是两个问题，来源证据不足时仍应拒识。",
       "image": "./assets/samples/plt05_pr105.png",
       "result": {
         "binary_label": "generated",
-        "platform_label": "PLT05",
-        "platform_label_text": "智谱GLM-Image / 清言相关文生图（PLT05）",
-        "generated_probability": 0.99691613,
+        "decision_status": "generated",
+        "decision_text": "AI 生成",
+        "generated_probability": 1.0,
+        "platform_label": "unknown_platform",
+        "platform_label_text": "未知平台或证据不足",
+        "platform_candidate": "PLT03",
+        "platform_candidate_text": "即梦AI / 字节系文生图（PLT03）",
+        "platform_accepted": false,
+        "platform_confidence": 0.48198548,
+        "platform_margin": 0.25568276,
+        "platform_model_agreement": false,
+        "platform_drift_score": 1.13590851,
+        "platform_drift_flag": false,
+        "platform_rejection_explanations": [
+          "融合后的最高平台概率未达到接受阈值"
+        ],
+        "risk_level": "review",
+        "risk_text": "人工复核",
         "platform_probabilities": {
-          "PLT01": 0.01425552415715231,
-          "PLT02": 0.222081166069499,
-          "PLT03": 0.05531348589692058,
-          "PLT05": 0.7083498238764281
+          "PLT01": 0.15012942683216995,
+          "PLT02": 0.22630271613878664,
+          "PLT03": 0.48198547542242764,
+          "PLT05": 0.14158238160661576
         },
         "signal_snapshot": [
           {
             "label": "原始尺寸",
-            "value": "1280 x 1280"
+            "value": "1200 x 1200"
           },
           {
             "label": "纵横比",
@@ -170,11 +328,11 @@
           },
           {
             "label": "像素规模",
-            "value": "1.638 MP"
+            "value": "1.440 MP"
           },
           {
             "label": "文件大小",
-            "value": "2402.6 KB"
+            "value": "2006.8 KB"
           },
           {
             "label": "PNG",
@@ -190,7 +348,7 @@
           },
           {
             "label": "Alpha通道",
-            "value": "是"
+            "value": "否"
           },
           {
             "label": "EXIF",
@@ -202,50 +360,70 @@
           },
           {
             "label": "通道数",
-            "value": "4"
+            "value": "3"
+          },
+          {
+            "label": "边缘强度",
+            "value": "0.0853"
+          },
+          {
+            "label": "高频占比",
+            "value": "0.003548"
           }
         ],
         "rationale": [
-          "当前模型先判断为 generated，概率为 99.69%；随后在已采样平台中做归因，当前给出的平台是 智谱GLM-Image / 清言相关文生图（PLT05）。",
-          "平台归因当前主要依赖文件层与导出链路信号，而不是纯语义内容。",
-          "这张图当前被模型重点利用的直接信号包括：PNG 导出、带 alpha 通道、尺寸 1280x1280。",
-          "这一样本更适合用来解释“交易证据真实性治理”的现实意义，而不是强调它比所有样本都危险。"
+          "当前使用运营低误伤策略：真实阈值 0.50，AI 阈值 0.70。默认展示档：优先避免真实图被误判为 AI，复核负担最低。",
+          "图片已进入 generated 区，但平台归因未通过开放集接受条件。当前最高候选为 即梦AI / 字节系文生图（PLT03），融合概率 0.4820；系统输出未知平台并进入人工复核。",
+          "本次拒识原因：融合后的最高平台概率未达到接受阈值。",
+          "平台归因同时使用原生导出模型和抗传播模型：前者侧重文件层与导出链路，后者侧重颜色、边缘、噪声与频域统计，而不是只看图片语义内容。",
+          "这张图当前被模型重点利用的直接信号包括：PNG 导出、尺寸 1200x1200。",
+          "候选平台概率仅用于安排调查顺序；在开放集拒识状态下，页面不会把最高候选包装成确定来源。"
         ]
       }
     },
     {
       "id": "real-control",
-      "title": "真实对照图 / 人像人物",
-      "subtitle": "开放场景真实摄影图",
-      "summary": "真实摄影图，用于说明 current binary 判别在真实图保护上的能力。",
+      "title": "真实对照人像",
+      "subtitle": "真实图低风险",
+      "summary": "真实摄影图进入低风险区，不继续输出平台来源。",
       "image": "./assets/samples/realctrl_person_01.jpg",
       "result": {
         "binary_label": "real",
+        "decision_status": "real",
+        "decision_text": "真实图片",
+        "generated_probability": 0.28955328,
         "platform_label": "real",
         "platform_label_text": "真实图片",
-        "generated_probability": 0.00125905,
-        "platform_probabilities": {
-          "PLT01": 0.11123410041033521,
-          "PLT02": 0.33131088452889973,
-          "PLT03": 0.5574150284202691,
-          "PLT05": 3.998664049595675e-05
-        },
+        "platform_candidate": "",
+        "platform_candidate_text": "",
+        "platform_accepted": false,
+        "platform_confidence": 0.62160764,
+        "platform_margin": 0.26177151,
+        "platform_model_agreement": false,
+        "platform_drift_score": 1.98322774,
+        "platform_drift_flag": false,
+        "platform_rejection_explanations": [
+          "融合后的最高平台概率未达到接受阈值"
+        ],
+        "risk_level": "low",
+        "risk_text": "自动通过",
+        "platform_probabilities": {},
         "signal_snapshot": [
           {
             "label": "原始尺寸",
-            "value": "1600 x 1086"
+            "value": "1200 x 814"
           },
           {
             "label": "纵横比",
-            "value": "1.473"
+            "value": "1.474"
           },
           {
             "label": "像素规模",
-            "value": "1.738 MP"
+            "value": "0.977 MP"
           },
           {
             "label": "文件大小",
-            "value": "109.9 KB"
+            "value": "99.5 KB"
           },
           {
             "label": "PNG",
@@ -265,21 +443,31 @@
           },
           {
             "label": "EXIF",
-            "value": "有"
+            "value": "无"
           },
           {
             "label": "信息键数量",
-            "value": "9"
+            "value": "4"
           },
           {
             "label": "通道数",
             "value": "3"
+          },
+          {
+            "label": "边缘强度",
+            "value": "0.0565"
+          },
+          {
+            "label": "高频占比",
+            "value": "0.001026"
           }
         ],
         "rationale": [
-          "当前模型先做 AI/real 二分类，这张图被判为 real，因此不会继续给出平台来源。",
-          "这类真实图的判定主要依赖 JPEG 导出、无 alpha 通道、保留 EXIF 与更多 info 字段等文件层信号。",
-          "它的作用不是说明模型已经解决所有真实图保护问题，而是展示当前演示版里的一个正向对照样本。"
+          "当前使用运营低误伤策略：真实阈值 0.50，AI 阈值 0.70。默认展示档：优先避免真实图被误判为 AI，复核负担最低。",
+          "当前模型先做 AI/real 二分类，AI 生成概率为 0.2896，低于真实图阈值 0.50，因此判为 real，不继续给出平台来源。",
+          "平台归因同时使用原生导出模型和抗传播模型：前者侧重文件层与导出链路，后者侧重颜色、边缘、噪声与频域统计，而不是只看图片语义内容。",
+          "这张图当前被模型重点利用的直接信号包括：JPEG 导出、info 字段数 4、尺寸 1200x814。",
+          "因此，本次结果应理解为低成本初筛；真实证件照、证书照和白底商品图等边界样本仍应保留人工复核。"
         ]
       }
     }
