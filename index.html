@@ -3,126 +3,64 @@
 <head>
   <meta charset="UTF-8">
   <meta name="viewport" content="width=device-width, initial-scale=1.0">
-  <title>AI图片识别与平台归因展示版</title>
-  <link rel="icon" href="data:image/svg+xml,%3Csvg xmlns='http://www.w3.org/2000/svg' viewBox='0 0 32 32'%3E%3Crect width='32' height='32' rx='7' fill='%2397100d'/%3E%3Ctext x='16' y='22' text-anchor='middle' font-size='15' fill='white' font-family='Arial'%3EAI%3C/text%3E%3C/svg%3E">
-  <link rel="stylesheet" href="./assets/demo.css">
+  <meta name="theme-color" content="#7b252b">
+  <meta name="description" content="分析图片的 AI 生成评分与平台来源候选，查看文件层证据并导出检测报告。">
+  <title>AI 图片识别与平台归因</title>
+  <link rel="icon" href="data:image/svg+xml,%3Csvg xmlns='http://www.w3.org/2000/svg' viewBox='0 0 32 32'%3E%3Crect width='32' height='32' rx='5' fill='%237b252b'/%3E%3Cpath d='M8 13V8h5m6 0h5v5M8 19v5h5m6 0h5v-5' fill='none' stroke='white' stroke-width='2'/%3E%3C/svg%3E">
+  <link rel="stylesheet" href="../static/style.css?v=laboratory-20260916">
+  <script src="../static/app.js?v=laboratory-20260916" defer></script>
 </head>
 <body>
+  <a class="skip-link" href="#detection">跳至图片检测</a>
   <main class="page">
-    <header class="top-bar glass">
-      <div class="brand">
-        <p class="eyebrow">AIGC 标识治理项目 GitHub 展示版</p>
-        <h1>AI 图片识别与平台归因</h1>
-      </div>
-      <div class="top-meta">
-        <div class="meta-pill">GitHub Pages</div>
-        <div class="meta-pill">双路平台归因</div>
-        <div class="meta-pill">开放集拒识</div>
-      </div>
+    <header class="site-header">
+      <a class="site-brand" href="#top" aria-label="AIGC 图像分析首页"><span class="brand-mark" aria-hidden="true"><svg viewBox="0 0 32 32"><path d="M7 13V7h6m6 0h6v6M7 19v6h6m6 0h6v-6M12 16h8"/></svg></span><span>AIGC <span class="brand-name">图像分析</span></span></a>
+      <span class="header-caption">图像真实性与来源研究</span>
+      <button id="helpBtn" class="help-button" type="button"><span aria-hidden="true">?</span>使用说明</button>
     </header>
-
-    <section class="hero glass">
-      <div class="hero-copy">
-        <h2>展示目的</h2>
-        <p class="lead">
-          这个版本用于 GitHub 在线展示。它保留网页原型的视觉结构和解释逻辑，
-          通过切换已核验样本呈现典型结果；可实时上传和推理的版本部署在 Render 页面。
-        </p>
-      </div>
-      <div class="notice">
-        <h2>展示限制</h2>
-        <ul>
-          <li>当前页面是静态演示版，不进行实时推理。</li>
-          <li>在线演示使用的是项目里已经核验过的典型样本结果。</li>
-          <li>完整识别能力仍需本地运行 Flask 后端。</li>
-        </ul>
-      </div>
+    <section class="hero" id="top" aria-labelledby="heroTitle">
+      <p class="eyebrow">AIGC 标识治理研究</p>
+      <h1 id="heroTitle">AI 图片识别<span>与平台归因</span></h1>
+      <p class="hero-subtitle">分析生成可能性，查阅来源线索，保留可核验的检测结果。</p>
     </section>
+    <div class="platform-strip" aria-label="来源分析范围"><span class="strip-label">来源分析范围</span><div class="platform-names"><span>文心一言</span><span>通义千问</span><span>即梦AI</span><span>智谱 GLM-Image</span></div></div>
 
-    <section class="workspace">
-      <section class="glass upload-panel">
+    <section class="workspace" id="detection" aria-labelledby="detectionTitle">
+      <div class="section-heading"><h2 id="detectionTitle">图片检测</h2><p>支持单张与批量</p></div>
+      <div class="upload-panel">
         <div class="upload-box">
-          <div class="section-head">
-            <span class="section-tag">01</span>
-            <div>
-              <h2>样本演示</h2>
-              <p>点击下方典型样本，查看 AI 判断、平台归因或拒识结果和关键信号。</p>
-            </div>
-          </div>
-          <div id="sampleSelector" class="sample-selector"></div>
-          <div class="upload-actions">
-            <button id="localPreviewBtn" type="button">本地预览图片</button>
-            <button id="resetSampleBtn" type="button" class="secondary-btn">恢复默认样本</button>
-          </div>
-          <input id="fileInput" type="file" accept="image/png,image/jpeg,image/webp" hidden>
-          <p id="statusText" class="status">已加载默认展示样本。</p>
+          <div class="upload-heading"><h3>选择图片</h3><span>PNG / JPEG / WEBP</span></div>
+          <label for="fileInput" class="sr-only">选择待检测图片</label>
+          <div class="upload-dropzone"><input id="fileInput" type="file" accept="image/png,image/jpeg,image/webp" multiple><div class="dropzone-copy"><svg class="upload-icon" viewBox="0 0 40 40" aria-hidden="true"><path d="M20 26V9m-6 6 6-6 6 6M9 25v7h22v-7"/></svg><strong>点击选择，或拖入图片</strong><span>单张不超过 16 MB，每批最多 20 张</span></div></div>
+          <div id="fileMeta" class="file-meta empty">尚未选择图片</div>
+          <details class="policy-settings">
+            <summary><span>检测设置</span><strong id="selectedPolicyLabel">低误判优先</strong></summary>
+            <fieldset class="policy-selector" aria-label="检测策略"><legend class="sr-only">检测策略</legend>
+              {% set policy_names = {'operational_low_false_ai': '低误判优先', 'balanced_review': '均衡复核', 'high_risk_after_sales_review': '高风险线索筛查'} %}
+              {% set policy_notes = {'operational_low_false_ai': '优先减少真实图片误判。', 'balanced_review': '保留更多边界图片进行人工核验。', 'high_risk_after_sales_review': '适合异物、瑕疵等售后线索筛查。'} %}
+              {% for profile in policy_profiles %}<label class="policy-option" for="policy-{{ profile.profile_id }}"><input id="policy-{{ profile.profile_id }}" type="radio" name="policyProfile" value="{{ profile.profile_id }}" {% if profile.profile_id == default_policy_id %}checked{% endif %}><span><strong>{{ policy_names.get(profile.profile_id, profile.profile_name) }}</strong><small>{{ policy_notes.get(profile.profile_id, '') }}</small></span></label>{% endfor %}
+            </fieldset>
+          </details>
+          <div class="upload-actions"><button id="predictBtn" class="primary-btn" type="button" disabled>开始检测 <span aria-hidden="true">↗</span></button><button id="clearFilesBtn" class="secondary-btn" type="button" disabled>清除图片</button><button id="cancelBtn" class="secondary-btn" type="button" hidden>停止等待</button></div>
+          <div class="upload-status"><span id="statusSpinner" class="spinner" hidden aria-hidden="true"></span><p id="statusText" role="status" aria-live="polite">选图仅在本地预览，点击检测后才提交分析。</p></div>
+          <div id="progressWrap" class="progress-wrap" role="progressbar" aria-label="批量检测进度" aria-valuemin="0" aria-valuemax="100" aria-valuenow="0" hidden><div id="progressBar" class="progress-bar"></div></div>
+          <div id="queueSummary" class="queue-summary" hidden></div>
         </div>
-        <div class="preview-box">
-          <img id="previewImage" alt="预览图">
-        </div>
-      </section>
-
-      <aside class="glass cue-panel">
-        <div class="section-head">
-          <span class="section-tag">02</span>
-          <div>
-            <h2>文件层留痕优先级</h2>
-            <p>原生模型与抗传播模型共同给出候选平台。</p>
-          </div>
-        </div>
-        <ol class="cue-list">
-          <li>图像格式：PNG / JPEG / WEBP</li>
-          <li>原始尺寸、长宽比、像素规模</li>
-          <li>是否存在 alpha 通道</li>
-          <li>EXIF 是否存在</li>
-          <li>信息键数量与导出链路差异</li>
-          <li>边缘、噪声与高频能量</li>
-          <li>低置信或分布漂移时输出未知平台</li>
-        </ol>
-      </aside>
-    </section>
-
-    <section class="results-grid">
-      <article class="panel">
-        <h2>识别结果</h2>
-        <div id="resultSummary" class="empty">加载中...</div>
-      </article>
-      <article class="panel">
-        <h2>平台候选概率</h2>
-        <div id="platformProbabilities" class="empty">加载中...</div>
-      </article>
-      <article class="panel">
-        <h2>文件层信号</h2>
-        <div id="signalSnapshot" class="empty">加载中...</div>
-      </article>
-      <article class="panel">
-        <h2>解释</h2>
-        <div id="rationaleBox" class="empty">加载中...</div>
-      </article>
-    </section>
-
-    <section class="panel info-panel">
-      <h2>如何理解这个演示页面</h2>
-      <div class="info-grid">
-        <div class="info-card">
-          <h3>不是在线推理器</h3>
-          <p>这里展示的是项目中已经验证过的典型结果，用于快速了解模型输出及其判断依据。</p>
-        </div>
-        <div class="info-card">
-          <h3>重点看文件层信号</h3>
-          <p>原生模型使用尺寸、格式、EXIF、alpha 和 info 字段，抗传播模型补充视觉与频域统计。</p>
-        </div>
-        <div class="info-card">
-          <h3>重点看典型样本差异</h3>
-          <p>即梦AI、智谱GLM-Image 与真实对照图放在一起，能更直观看到平台差异、风险差异和模型边界。</p>
-        </div>
-        <div class="info-card">
-          <h3>结果边界</h3>
-          <p>系统交付风险分流和证据线索。未通过开放集阈值的图片显示未知平台，不把最高概率包装成定论。</p>
-        </div>
+        <div class="preview-box"><div class="preview-toolbar"><span>图像预览</span><span id="previewCaption">待上传</span></div><div class="preview-stage"><div id="previewPlaceholder" class="preview-placeholder"><svg class="preview-icon" viewBox="0 0 88 72" aria-hidden="true"><rect x="5" y="5" width="78" height="62" rx="2"/><circle cx="29" cy="25" r="6"/><path d="m12 59 23-23 16 15 11-11 15 19"/></svg><strong>在这里查看原图</strong><p>建议上传原始导出文件<br>以保留更多文件层信息</p></div><img id="previewImage" alt="当前待检测图片" hidden></div><div class="preview-footer"><span id="imageDimensions">原图比例预览</span><span>文件留痕与视觉统计联合分析</span></div></div>
       </div>
     </section>
+
+    <section id="results" class="results-section" aria-labelledby="resultsTitle" hidden>
+      <div class="section-heading result-section-heading"><div><h2 id="resultsTitle" tabindex="-1">检测结果</h2><p id="reportMeta"></p></div><button id="exportSingleReportBtn" class="report-export" type="button" disabled><svg viewBox="0 0 24 24" aria-hidden="true"><path d="M12 3v11m-4-4 4 4 4-4M5 15v5h14v-5"/></svg>导出检测报告</button></div>
+      <div class="results-grid"><article class="panel panel-summary" aria-label="图像判断"><div id="resultSummary" aria-live="polite"></div></article><article class="panel panel-probabilities"><h3>平台来源分析</h3><div id="platformProbabilities"></div></article></div>
+      <details id="evidenceDetails" class="evidence-details"><summary><span>检测证据与技术详情</span><span class="disclosure-hint">查看依据</span></summary><div class="evidence-body"><article><h3>文件与图像信号</h3><div id="signalSnapshot"></div></article><article><h3>判断依据</h3><div id="rationaleBox"></div></article><div id="gateDetails" class="gate-details"></div></div></details>
+      <details id="usageDetails" class="usage-details"><summary>如何使用本次结果</summary><div id="usageGuide" class="usage-guide"></div></details>
+    </section>
+
+    <section id="batchSection" class="batch-section" aria-labelledby="batchTitle" hidden><div class="section-heading"><div><h2 id="batchTitle">批量检测结果</h2><p>选择一条记录，查看对应原图与完整报告。</p></div><button id="exportBatchCsvBtn" type="button" class="ghost-btn" disabled>导出 CSV</button></div><div id="batchResults"></div></section>
+    <footer class="site-footer"><span>AIGC 标识治理研究</span><p>模型结果用于辅助核验，不作为真实性证明或单独定责依据。</p><button id="footerHelpBtn" class="text-button" type="button">使用与隐私说明</button></footer>
   </main>
-  <script src="./assets/demo.js"></script>
+  <dialog id="helpDialog" class="help-dialog" aria-labelledby="helpTitle"><div class="dialog-heading"><div><p class="eyebrow">使用说明</p><h2 id="helpTitle">了解检测与结果</h2></div><button id="closeHelpBtn" type="button" class="dialog-close" aria-label="关闭使用说明">×</button></div><div class="help-content"><section><h3>如何开始</h3><p>选择或拖入 PNG、JPEG、WEBP 图片，确认预览后点击开始检测。支持单张与批量，每批最多 20 张。优先提供原始导出文件。</p></section><section><h3>如何理解结果</h3><p>AI 生成评分是当前分类模型的输出，不等于经过校准的真实风险率。图像判断与来源判断为两个独立环节；仅在来源证据满足接受条件时给出平台，否则保留暂无法归因。</p><p>来源分析限定于已采样范围。截图、压缩与转存可能改变文件留痕，证件照与白底商品图也可能需要进一步核验。</p></section><section><h3>隐私与记录</h3><p>选图阶段仅在当前浏览器中预览，点击检测后图片才发送到服务端分析。服务端处理结束后清理临时图片。页面不写入跨会话历史，刷新或关闭后不保留本次前端结果；已下载的报告由你自行管理。</p><p>停止等待会中断当前浏览器请求，但不保证服务端已开始的计算同步停止。</p></section></div></dialog>
+  <script id="policyProfileData" type="application/json">{{ {'profiles': policy_profiles, 'default_id': default_policy_id}|tojson }}</script>
 </body>
 </html>
