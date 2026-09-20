@@ -10,8 +10,8 @@
   --soft: #eee9e1;
   --green: #27624d;
   --amber: #856020;
-  --serif: 'Songti SC', 'STSong', 'SimSun', 'Times New Roman', serif;
-  --sans: 'PingFang SC', 'Microsoft YaHei', 'Noto Sans CJK SC', sans-serif;
+  --serif: 'Times New Roman', 'FangSong', 'STFangsong', '仿宋', serif;
+  --sans: 'Times New Roman', 'FangSong', 'STFangsong', '仿宋', serif;
 }
 * { box-sizing: border-box; }
 [hidden] { display: none !important; }
@@ -38,7 +38,7 @@ svg { fill: none; stroke: currentColor; stroke-width: 1.5; stroke-linecap: round
 .brand-mark svg { width: 28px; height: 28px; }
 .header-caption { color: var(--muted); font-size: 12px; letter-spacing: .04em; }
 .help-button { margin-left: auto; display: flex; align-items: center; gap: 8px; min-height: 44px; padding: 0 4px 0 12px; border: 0; background: none; color: var(--muted); font-size: 13px; }
-.help-button > span { display: grid; place-items: center; width: 19px; height: 19px; border: 1px solid currentColor; border-radius: 50%; font: 13px Georgia, serif; }
+.help-button > span { display: grid; place-items: center; width: 19px; height: 19px; border: 1px solid currentColor; border-radius: 50%; font: 13px/1 'Times New Roman', 'FangSong', 'STFangsong', '仿宋', serif; }
 .help-button:hover { color: var(--wine); }
 .hero { padding: 34px 0 28px; }
 .eyebrow { color: var(--wine); font-size: 12px; letter-spacing: .12em; }
@@ -76,7 +76,7 @@ summary { cursor: pointer; list-style: none; }
 summary::-webkit-details-marker { display: none; }
 .policy-settings summary { display: flex; gap: 12px; align-items: center; padding: 12px 0; color: var(--muted); font-size: 12px; }
 .policy-settings summary strong { font-size: 12px; font-weight: 500; color: var(--ink); margin-left: auto; }
-.policy-settings summary::after, .evidence-details summary::after, .usage-details summary::after { content: '+'; width: 15px; text-align: center; font: 18px/1 Georgia, serif; color: var(--wine); }
+.policy-settings summary::after, .evidence-details summary::after, .usage-details summary::after { content: '+'; width: 15px; text-align: center; font: 18px/1 'Times New Roman', 'FangSong', 'STFangsong', '仿宋', serif; color: var(--wine); }
 details[open] > summary::after { content: '\2212'; }
 .policy-selector { padding: 0 0 10px; border: 0; margin: 0; display: grid; gap: 3px; }
 .policy-option { display: flex; gap: 10px; align-items: center; padding: 10px 8px; cursor: pointer; }
@@ -130,7 +130,7 @@ details[open] > summary::after { content: '\2212'; }
 .verdict-data { display: flex; align-items: flex-end; gap: 30px; margin: 26px 0 18px; }
 .score-block { flex-shrink: 0; }
 .score-block > span, .source-block > span { display: block; color: var(--muted); font-size: 12px; margin-bottom: 7px; }
-.score-block strong { font: 44px/1.15 Georgia, 'Times New Roman', serif; color: var(--wine); letter-spacing: -.04em; }
+.score-block strong { font: 44px/1.15 'Times New Roman', 'FangSong', 'STFangsong', '仿宋', serif; color: var(--wine); letter-spacing: -.04em; }
 .source-block { min-width: 0; padding: 0 0 5px 25px; border-left: 1px solid var(--line); }
 .source-block strong { font-size: 14px; font-weight: 500; overflow-wrap: anywhere; }
 .score-track, .prob-track { height: 4px; background: var(--soft); }
@@ -163,11 +163,11 @@ details[open] > summary::after { content: '\2212'; }
 .signal-item dd { margin: 0; text-align: right; overflow-wrap: anywhere; }
 .rationale-list { padding-left: 20px; margin: 0; color: var(--muted); font-size: 12px; }
 .rationale-list li { padding: 0 0 12px 5px; overflow-wrap: anywhere; }
-.rationale-list li::marker { color: var(--wine); font: 12px Georgia, serif; }
+.rationale-list li::marker { color: var(--wine); font: 12px 'Times New Roman', 'FangSong', 'STFangsong', '仿宋', serif; }
 .gate-details:not(:empty) { grid-column: 1 / -1; border-top: 1px solid var(--line); padding-top: 20px; }
 .gate-grid { display: grid; grid-template-columns: repeat(3, minmax(0, 1fr)); gap: 18px; margin: 0; }
 .gate-grid dt { color: var(--muted); font-size: 12px; }
-.gate-grid dd { font: 22px/1.5 Georgia, serif; margin: 5px 0 0; }
+.gate-grid dd { font: 22px/1.5 'Times New Roman', 'FangSong', 'STFangsong', '仿宋', serif; margin: 5px 0 0; }
 .gate-grid small { color: var(--muted); font-size: 12px; }
 .gate-details p { font-size: 12px; color: var(--muted); margin-top: 15px; overflow-wrap: anywhere; }
 .usage-details { margin-top: 12px; color: var(--muted); }
@@ -202,8 +202,7 @@ details[open] > summary::after { content: '\2212'; }
 .table-badge.is-uncertain { color: var(--amber); }
 .site-footer { display: flex; align-items: baseline; gap: 28px; padding: 24px 0 28px; border-top: 1px solid var(--line); margin-top: 34px; font-size: 12px; color: var(--muted); }
 .site-footer > span { color: var(--wine); flex-shrink: 0; }
-.site-footer p { flex: 1; }
-.text-button { padding: 6px 0; border: 0; background: transparent; color: var(--muted); font-size: 12px; flex-shrink: 0; }
+.text-button { margin-left: auto; padding: 6px 0; border: 0; background: transparent; color: var(--muted); font-size: 12px; flex-shrink: 0; }
 .text-button:hover { color: var(--wine); }
 .help-dialog { width: min(620px, calc(100% - 32px)); max-height: 85vh; max-height: 85dvh; padding: 30px; border: 1px solid var(--line); border-top: 3px solid var(--wine); background: var(--white); color: var(--ink); box-shadow: 0 20px 80px #29272326; }
 .help-dialog::backdrop { background: #29272366; backdrop-filter: blur(3px); }
@@ -225,7 +224,6 @@ details[open] > summary::after { content: '\2212'; }
   .source-block { padding-left: 18px; }
   .score-block strong { font-size: 38px; }
   .site-footer { flex-wrap: wrap; gap: 10px 24px; }
-  .site-footer p { min-width: 55%; }
 }
 @media (max-width: 700px) {
   .page { padding: 0 20px; }
@@ -276,7 +274,7 @@ details[open] > summary::after { content: '\2212'; }
   .batch-section .section-heading { flex-wrap: wrap; }
   .batch-section .section-heading > div { width: 100%; }
   .site-footer { margin-top: 28px; padding-top: 20px; display: grid; gap: 8px; }
-  .site-footer .text-button { justify-self: start; min-height: 38px; }
+  .site-footer .text-button { justify-self: start; min-height: 38px; margin-left: 0; }
   .help-dialog { padding: 22px; }
   .dialog-heading h2 { font-size: 24px; }
 }
