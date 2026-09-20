@@ -1,1151 +1,403 @@
-const fileInput = document.getElementById('fileInput');
-const predictBtn = document.getElementById('predictBtn');
-const batchPredictBtn = document.getElementById('batchPredictBtn');
-const statusText = document.getElementById('statusText');
-const previewImage = document.getElementById('previewImage');
-const previewPlaceholder = document.getElementById('previewPlaceholder');
-const resultSummary = document.getElementById('resultSummary');
-const platformProbabilities = document.getElementById('platformProbabilities');
-const signalSnapshot = document.getElementById('signalSnapshot');
-const rationaleBox = document.getElementById('rationaleBox');
-const queueSummary = document.getElementById('queueSummary');
-const batchResults = document.getElementById('batchResults');
-const historyList = document.getElementById('historyList');
-const exportHistoryBtn = document.getElementById('exportHistoryBtn');
-const clearHistoryBtn = document.getElementById('clearHistoryBtn');
-const exportBatchCsvBtn = document.getElementById('exportBatchCsvBtn');
-const exportSingleReportBtn = document.getElementById('exportSingleReportBtn');
+'use strict';
+
+const byId = id => document.getElementById(id);
+const fileInput = byId('fileInput');
+const predictBtn = byId('predictBtn');
+const clearFilesBtn = byId('clearFilesBtn');
+const cancelBtn = byId('cancelBtn');
+const statusText = byId('statusText');
+const statusSpinner = byId('statusSpinner');
+const previewImage = byId('previewImage');
+const previewPlaceholder = byId('previewPlaceholder');
+const previewCaption = byId('previewCaption');
+const imageDimensions = byId('imageDimensions');
+const fileMeta = byId('fileMeta');
+const queueSummary = byId('queueSummary');
+const progressWrap = byId('progressWrap');
+const progressBar = byId('progressBar');
+const resultsSection = byId('results');
+const resultsTitle = byId('resultsTitle');
+const reportMeta = byId('reportMeta');
+const resultSummary = byId('resultSummary');
+const platformProbabilities = byId('platformProbabilities');
+const signalSnapshot = byId('signalSnapshot');
+const rationaleBox = byId('rationaleBox');
+const gateDetails = byId('gateDetails');
+const usageGuide = byId('usageGuide');
+const evidenceDetails = byId('evidenceDetails');
+const usageDetails = byId('usageDetails');
+const batchSection = byId('batchSection');
+const batchResults = byId('batchResults');
+const exportSingleReportBtn = byId('exportSingleReportBtn');
+const exportBatchCsvBtn = byId('exportBatchCsvBtn');
+const selectedPolicyLabel = byId('selectedPolicyLabel');
+const helpDialog = byId('helpDialog');
 const dropzone = document.querySelector('.upload-dropzone');
-const fileMeta = document.getElementById('fileMeta');
-const progressWrap = document.getElementById('progressWrap');
-const progressBar = document.getElementById('progressBar');
 const policyInputs = Array.from(document.querySelectorAll('input[name="policyProfile"]'));
-const policyMetricPreview = document.getElementById('policyMetricPreview');
-const policyProfileDataEl = document.getElementById('policyProfileData');
-const reviewSubmitBox = document.getElementById('reviewSubmitBox');
-const reviewQueueList = document.getElementById('reviewQueueList');
-const refreshReviewBtn = document.getElementById('refreshReviewBtn');
-
-const HISTORY_KEY = 'aigc-trace-history-v1';
 const MAX_FILE_SIZE = 16 * 1024 * 1024;
-const ACCEPTED_TYPES = new Set(['image/png', 'image/jpeg', 'image/webp']);
-const ACCEPTED_EXTENSIONS = new Set(['.png', '.jpg', '.jpeg', '.webp']);
-const PLATFORM_NAME_MAP = {
-  PLT01: '文心一言',
-  PLT02: '通义千问',
-  PLT03: '即梦AI / 字节系文生图',
-  PLT05: '智谱GLM-Image / 清言相关文生图',
-  real: '真实图片',
-  uncertain: '需人工复核',
-  unknown_platform: '未知平台或证据不足'
-};
-const policyProfileData = parsePolicyProfiles();
-
-let lastBatchResults = [];
+const MAX_BATCH_SIZE = 20;
+const REQUEST_TIMEOUT_MS = 90000;
+const PLATFORM_NAME_MAP = { PLT01: '文心一言', PLT02: '通义千问', PLT03: '即梦AI', PLT05: '智谱 GLM-Image' };
+const POLICY_NAMES = { operational_low_false_ai: '低误判优先', balanced_review: '均衡复核', high_risk_after_sales_review: '高风险线索筛查' };
+let policyData = { profiles: [], default_id: 'operational_low_false_ai' };
+try { policyData = JSON.parse(byId('policyProfileData').textContent); } catch { /* Default policy remains usable when optional metadata is missing. */ }
+let selectedFiles = [];
 let lastSingleResult = null;
 let lastSingleFileName = '';
-
-function parsePolicyProfiles() {
-  if (!policyProfileDataEl?.textContent) return [];
-  try {
-    return JSON.parse(policyProfileDataEl.textContent);
-  } catch {
-    return [];
-  }
-}
-
-function getSelectedFiles() {
-  return Array.from(fileInput.files || []);
-}
+let lastBatchResults = [];
+let activeFile = null;
+let previewUrl = '';
+let isBusy = false;
+let runRevision = 0;
+let currentController = null;
+const resultCache = new Map();
+const completedFiles = new Set();
+const failures = new Map();
 
 function escapeHtml(value) {
-  return String(value ?? '')
-    .replaceAll('&', '&amp;')
-    .replaceAll('<', '&lt;')
-    .replaceAll('>', '&gt;')
-    .replaceAll('"', '&quot;')
-    .replaceAll("'", '&#39;');
+  return String(value ?? '').replaceAll('&', '&amp;').replaceAll('<', '&lt;').replaceAll('>', '&gt;').replaceAll('"', '&quot;').replaceAll("'", '&#39;');
 }
-
-function platformDisplayName(code) {
-  return PLATFORM_NAME_MAP[code] || code;
-}
-
 function asPercent(value, digits = 2) {
-  const number = Number(value);
-  if (!Number.isFinite(number)) return '0.00%';
-  return `${(number * 100).toFixed(digits)}%`;
+  return value != null && Number.isFinite(Number(value)) ? `${(Number(value) * 100).toFixed(digits)}%` : '--';
 }
-
-function clampPercent(value) {
-  const number = Number(value);
-  if (!Number.isFinite(number)) return 0;
-  return Math.max(0, Math.min(100, number * 100));
+function platformDisplayName(code) { return PLATFORM_NAME_MAP[code] || '暂无法归因'; }
+function platformAttributionAccepted(result) {
+  return result.binary_label === 'generated' && result.platform_accepted === true && Object.hasOwn(PLATFORM_NAME_MAP, result.platform_label);
 }
-
-function setStatus(text, tone = 'neutral') {
-  statusText.textContent = text;
-  statusText.dataset.tone = tone;
+function decisionLabel(result) {
+  return { real: '更接近真实图', generated: 'AI 生成倾向较高', uncertain: '需要进一步核验' }[result.binary_label] || '检测未完成';
 }
-
-function getSelectedPolicyProfile() {
-  return document.querySelector('input[name="policyProfile"]:checked')?.value || 'operational_low_false_ai';
+function sourceLabel(result) {
+  if (result.binary_label !== 'generated') return '未进行来源归因';
+  return platformAttributionAccepted(result) ? platformDisplayName(result.platform_label) : '暂无法归因';
 }
-
-function getSelectedPolicyName() {
-  const selected = document.querySelector('input[name="policyProfile"]:checked');
-  return selected?.closest('.policy-option')?.querySelector('strong')?.textContent || '默认策略';
+function decisionTone(result) { return { real: 'real', generated: 'ai', uncertain: 'uncertain' }[result.binary_label] || 'uncertain'; }
+function getSelectedFiles() { return selectedFiles; }
+function getSelectedPolicyProfile() { return policyInputs.find(input => input.checked)?.value || policyData.default_id; }
+function getSelectedPolicyName() { return POLICY_NAMES[getSelectedPolicyProfile()] || '默认策略'; }
+function isStaticPreviewMode() { return window.location.protocol === 'file:'; }
+function formatBytes(bytes) { return bytes < 1024 * 1024 ? `${(bytes / 1024).toFixed(1)} KB` : `${(bytes / 1024 / 1024).toFixed(2)} MB`; }
+function validateFiles(files) {
+  if (files.length > MAX_BATCH_SIZE) return { ok: false, message: `每批最多 20 张，请减少图片后重试。` };
+  const invalid = files.find(file => !['image/png', 'image/jpeg', 'image/webp'].includes(file.type) && !(!file.type && /\.(png|jpe?g|webp)$/i.test(file.name)));
+  if (invalid) return { ok: false, message: `${invalid.name} 格式不支持，请选择 PNG、JPEG 或 WEBP。` };
+  const oversize = files.find(file => file.size > MAX_FILE_SIZE);
+  if (oversize) return { ok: false, message: `${oversize.name} 超过 16 MB，请调整文件后重试。` };
+  return { ok: true };
 }
-
-function getSelectedPolicyData() {
-  const selectedId = getSelectedPolicyProfile();
-  return policyProfileData.find(profile => String(profile.profile_id) === selectedId) || policyProfileData[0] || null;
+function setStatus(text, tone = 'neutral') { statusText.textContent = text; statusText.dataset.tone = tone; }
+function updateQueueSummary() {
+  queueSummary.hidden = !selectedFiles.length;
+  const remaining = selectedFiles.filter(file => !completedFiles.has(file)).length;
+  queueSummary.textContent = `${selectedFiles.length} 张图片 / 已完成 ${completedFiles.size} / 待检测 ${remaining}`;
 }
-
-function asMetricPercent(value, digits = 2) {
-  const number = Number(value);
-  if (!Number.isFinite(number)) return '--';
-  return asPercent(number, digits);
+function setProgress(done, total) {
+  progressWrap.hidden = total <= 1 || !isBusy;
+  const percent = total ? Math.round(done / total * 100) : 0;
+  progressBar.style.width = `${percent}%`;
+  progressWrap.setAttribute('aria-valuenow', String(percent));
 }
-
-function thresholdPercent(value) {
-  const number = Number(value);
-  if (!Number.isFinite(number)) return '--';
-  return `${(number * 100).toFixed(0)}%`;
+function updateControls() {
+  const hasFiles = selectedFiles.length > 0;
+  predictBtn.disabled = isBusy || !hasFiles || isStaticPreviewMode();
+  clearFilesBtn.disabled = isBusy || !hasFiles;
+  clearFilesBtn.hidden = isBusy || !hasFiles;
+  cancelBtn.hidden = !isBusy;
+  cancelBtn.disabled = !isBusy || currentController?.signal.aborted === true;
+  fileInput.disabled = isBusy;
+  policyInputs.forEach(input => { input.disabled = isBusy; });
+  statusSpinner.hidden = !isBusy;
+  dropzone.classList.toggle('is-busy', isBusy);
+  exportSingleReportBtn.disabled = isBusy || !lastSingleResult;
+  exportBatchCsvBtn.disabled = isBusy || !lastBatchResults.length;
+  selectedPolicyLabel.textContent = getSelectedPolicyName();
+  const pending = selectedFiles.filter(file => !completedFiles.has(file)).length;
+  predictBtn.innerHTML = isBusy ? '正在检测' : `${completedFiles.size && pending ? '重试未完成' : completedFiles.size && !pending ? '重新检测' : '开始检测'}${selectedFiles.length > 1 ? `（${pending || selectedFiles.length} 张）` : ''} <span aria-hidden="true">↗</span>`;
+  resultsSection.setAttribute('aria-busy', String(isBusy));
 }
-
-function policyUseCase(profileId) {
-  const mapping = {
-    operational_low_false_ai: '适合普通展示和真实图保护，降低证件照、白底商品图被误判为 AI 的风险。',
-    balanced_review: '适合常规审核，将边界图片保留在复核区，平衡自动判断与人工核验。',
-    high_risk_after_sales_review: '适合售后异物、瑕疵和仅退款纠纷的风险初筛，目标是提高可疑 AI 图捕获率。'
+function resetPreview() {
+  if (previewUrl) URL.revokeObjectURL(previewUrl);
+  previewUrl = '';
+  previewImage.removeAttribute('src');
+  previewImage.hidden = true;
+  previewPlaceholder.hidden = false;
+  previewCaption.textContent = '待上传';
+  imageDimensions.textContent = '原图比例预览';
+}
+function renderPreview(file) {
+  if (activeFile !== file || !previewUrl) {
+    resetPreview();
+    previewUrl = URL.createObjectURL(file);
+    previewImage.src = previewUrl;
+  }
+  activeFile = file;
+  previewImage.hidden = false;
+  previewPlaceholder.hidden = true;
+  previewCaption.textContent = file.name;
+  previewImage.onload = () => { if (activeFile === file) imageDimensions.textContent = `${previewImage.naturalWidth} × ${previewImage.naturalHeight} px`; };
+  previewImage.onerror = () => {
+    if (activeFile !== file) return;
+    previewImage.hidden = true;
+    previewPlaceholder.hidden = false;
+    setStatus('图片无法预览，请检查文件是否完整或改用其他图片。', 'error');
   };
-  return mapping[profileId] || '当前策略用于在低误伤、自动命中和人工复核之间做取舍。';
 }
-
-function renderPolicyMetricPreview() {
-  if (!policyMetricPreview) return;
-  const profile = getSelectedPolicyData();
-  if (!profile) {
-    policyMetricPreview.innerHTML = '';
-    return;
-  }
-  policyMetricPreview.innerHTML = `
-    <div class="policy-preview-head">
-      <div>
-        <strong>${escapeHtml(profile.profile_name)}</strong>
-        <span>${escapeHtml(policyUseCase(profile.profile_id))}</span>
-      </div>
-      <div class="policy-threshold-pill">
-        真实 ≤ ${thresholdPercent(profile.real_threshold)}，AI ≥ ${thresholdPercent(profile.generated_threshold)}
-      </div>
-    </div>
-    <div class="policy-metric-grid">
-      <div class="policy-metric">
-        <span>真实图误判 AI</span>
-        <strong>${asMetricPercent(profile.test_real_false_ai_rate)}</strong>
-        <small>越低越适合真实图保护</small>
-      </div>
-      <div class="policy-metric">
-        <span>生成图风险捕获</span>
-        <strong>${asMetricPercent(profile.test_generated_risk_capture_rate)}</strong>
-        <small>进入 AI 区或复核区的比例</small>
-      </div>
-      <div class="policy-metric">
-        <span>生成图自动命中</span>
-        <strong>${asMetricPercent(profile.test_generated_auto_recall)}</strong>
-        <small>直接进入 AI 区的比例</small>
-      </div>
-    </div>
-  `;
-}
-
-function isStaticPreviewMode() {
-  return window.location.protocol === 'file:';
-}
-
-function setProgress(value) {
-  const clamped = Math.max(0, Math.min(100, value));
-  progressBar.style.width = `${clamped}%`;
-  progressWrap.classList.toggle('is-active', clamped > 0 && clamped < 100);
-  progressWrap.setAttribute('aria-hidden', clamped > 0 && clamped < 100 ? 'false' : 'true');
-}
-
-function setLoading(isLoading) {
-  predictBtn.disabled = isLoading;
-  batchPredictBtn.disabled = isLoading;
-  predictBtn.textContent = isLoading ? '识别中...' : '识别当前图片';
-  batchPredictBtn.textContent = isLoading ? '处理中...' : '批量识别全部';
-}
-
-function emptyState(title, body) {
-  return `
-    <div class="empty-state">
-      <strong>${escapeHtml(title)}</strong>
-      <span>${escapeHtml(body)}</span>
-    </div>
-  `;
-}
-
 function clearResult() {
-  resultSummary.innerHTML = emptyState('尚未识别', '上传图片后，这里会显示 AI / real 结论、阈值区间、检测交付和使用说明。');
-  platformProbabilities.innerHTML = emptyState('等待 AI 高置信结果', '只有进入 AI 区的图片才展示四平台概率。');
-  signalSnapshot.innerHTML = emptyState('等待读取文件层信号', '系统会提取格式、尺寸、EXIF、alpha 通道和 info 字段。');
-  rationaleBox.innerHTML = emptyState('等待生成解释', '解释会说明模型依据、边界样本处理和平台归因限制。');
-  if (reviewSubmitBox) {
-    reviewSubmitBox.classList.add('empty');
-    reviewSubmitBox.innerHTML = emptyState('尚无待提交结果', '完成识别后，可将文件哈希、模型证据和备注提交人工复核。');
-  }
+  resultsSection.hidden = true;
+  batchSection.hidden = true;
+  evidenceDetails.open = false;
+  usageDetails.open = false;
   lastSingleResult = null;
   lastSingleFileName = '';
-  setProgress(0);
+  reportMeta.textContent = '';
+  resultSummary.innerHTML = '';
+  platformProbabilities.innerHTML = '';
 }
-
-function updateQueueSummary() {
-  const files = getSelectedFiles();
-  const queueCount = files.length;
-  const pendingCount = Math.max(queueCount - lastBatchResults.length, 0);
-  queueSummary.innerHTML = `
-    <div class="queue-chip">当前队列 ${queueCount}</div>
-    <div class="queue-chip">待识别 ${queueCount === 0 ? 0 : pendingCount}</div>
-  `;
+function clearSelection() {
+  runRevision += 1;
+  currentController?.abort();
+  selectedFiles = [];
+  fileInput.value = '';
+  resultCache.clear(); completedFiles.clear(); failures.clear();
+  lastBatchResults = [];
+  activeFile = null;
+  resetPreview(); clearResult();
+  fileMeta.className = 'file-meta empty';
+  fileMeta.textContent = '尚未选择图片';
+  updateQueueSummary(); updateControls();
+  setStatus('选图仅在本地预览，点击检测后才提交分析。');
 }
-
-function formatBytes(bytes) {
-  if (!Number.isFinite(bytes)) return '';
-  if (bytes < 1024) return `${bytes} B`;
-  if (bytes < 1024 * 1024) return `${(bytes / 1024).toFixed(1)} KB`;
-  return `${(bytes / 1024 / 1024).toFixed(2)} MB`;
-}
-
-function hasAcceptedExtension(fileName) {
-  const lower = fileName.toLowerCase();
-  return Array.from(ACCEPTED_EXTENSIONS).some(ext => lower.endsWith(ext));
-}
-
-function validateFiles(files) {
-  if (!files.length) return { ok: true, message: '' };
-  const invalidType = files.find(file => {
-    const browserTypeOk = file.type ? ACCEPTED_TYPES.has(file.type) : false;
-    return !browserTypeOk && !hasAcceptedExtension(file.name);
-  });
-  if (invalidType) {
-    return { ok: false, message: `不支持 ${invalidType.name} 的文件类型，请上传 PNG、JPEG 或 WEBP。` };
-  }
-  const oversize = files.find(file => file.size > MAX_FILE_SIZE);
-  if (oversize) {
-    return { ok: false, message: `${oversize.name} 超过 16MB，请压缩后再上传。` };
-  }
-  return { ok: true, message: '' };
-}
-
-function renderFileMeta() {
-  const files = getSelectedFiles();
-  if (!files.length) {
-    fileMeta.className = 'file-meta empty';
-    fileMeta.innerHTML = '尚未选择文件';
-    return;
-  }
-  const totalBytes = files.reduce((sum, file) => sum + file.size, 0);
-  const first = files[0];
-  const more = files.length > 1 ? `，另有 ${files.length - 1} 张` : '';
-  fileMeta.className = 'file-meta';
-  fileMeta.innerHTML = `
-    <div>
-      <strong>${escapeHtml(first.name)}${more}</strong>
-      <span>${files.length} 张图片，合计 ${formatBytes(totalBytes)}</span>
-    </div>
-    <span class="file-meta-pill">${escapeHtml(first.type || first.name.split('.').pop() || 'image')}</span>
-  `;
-}
-
-function readHistory() {
-  try {
-    return JSON.parse(localStorage.getItem(HISTORY_KEY) || '[]');
-  } catch {
-    return [];
-  }
-}
-
-function writeHistory(rows) {
-  localStorage.setItem(HISTORY_KEY, JSON.stringify(rows));
-}
-
-function decisionTone(row) {
-  if (row.binary_label === 'real') return 'real';
-  if (row.binary_label === 'uncertain' || row.risk_level === 'review') return 'uncertain';
-  return 'ai';
-}
-
-function platformAttributionAccepted(result) {
-  return result.binary_label === 'generated' && result.platform_accepted !== false && result.platform_label !== 'unknown_platform';
-}
-
-function decisionAdvice(result) {
-  if (result.binary_label === 'real') {
-    return {
-      title: '真实图低风险',
-      body: '系统交付真实图低风险结果，不继续输出平台来源。'
-    };
-  }
-  if (result.binary_label === 'uncertain') {
-    return {
-      title: '需人工复核',
-      body: '系统交付需人工复核结果，不输出确定的 AI / real 标签和平台来源。'
-    };
-  }
-  if (!platformAttributionAccepted(result)) {
-    return {
-      title: 'AI 图像，来源待复核',
-      body: `系统交付高置信 AI 生成结果，但没有把图片强制归入四个平台。当前最高候选为 ${result.platform_candidate_text || '未知'}，仅用于安排核验顺序。`
-    };
-  }
-  return {
-    title: '高置信 AI 生成',
-    body: `系统交付高置信 AI 生成结果，并在已采样平台中给出 ${result.platform_label_text || '当前最高概率平台'}。`
-  };
-}
-
-function resultUsageGuide(result) {
-  if (result.binary_label === 'real') {
-    return [
-      {
-        title: '建议下一步',
-        body: '保留原图文件、订单上下文和沟通记录。若场景敏感，再要求上传原始文件。'
-      },
-      {
-        title: '结果边界',
-        body: '当前未发现强 AI 生成留痕，但低风险结果不等同于对图片真实性作绝对保证。'
-      }
-    ];
-  }
-  if (result.binary_label === 'uncertain') {
-    return [
-      {
-        title: '建议下一步',
-        body: '要求补充原始图片、多角度照片、拍摄时间或订单证据，再由人工复核。'
-      },
-      {
-        title: '结果边界',
-        body: '图片特征处在模型复核区，系统不输出确定的 AI 判断，也不继续进行平台归因。'
-      }
-    ];
-  }
-  if (!platformAttributionAccepted(result)) {
-    return [
-      {
-        title: '建议下一步',
-        body: '补充原始导出文件、生成记录、截图前文件或多角度证据，并将本次结果提交人工复核。'
-      },
-      {
-        title: '结果边界',
-        body: '系统只确认 AI 风险较高；候选概率没有通过开放集接受条件，不能据此断定来源平台。'
-      }
-    ];
-  }
-  return [
-    {
-      title: '建议下一步',
-      body: '查看平台概率和文件层信号，结合原始文件、订单链路和多角度图片做最终核验。'
-    },
-    {
-      title: '结果边界',
-      body: '系统发现较强 AI 生成留痕；平台归因仅是已采样范围内的技术线索，不等同于来源定责。'
-    }
-  ];
-}
-
-function decisionLabel(row) {
-  return row.decision_text || (row.binary_label === 'real' ? '真实图片' : row.binary_label === 'uncertain' ? '需人工复核' : 'AI 生成');
-}
-
-function renderHistory() {
-  const rows = readHistory();
-  if (!rows.length) {
-    historyList.innerHTML = emptyState('尚无历史记录', '完成识别后会在本地浏览器保存最近结果，便于后续核验和结果追踪。');
-    return;
-  }
-  historyList.innerHTML = `
-    <div class="history-list">
-      ${rows.slice(0, 8).map(row => `
-        <div class="history-item">
-          <div>
-            <strong>${escapeHtml(row.file_name)}</strong>
-            <span>${escapeHtml(decisionLabel(row))}</span>
-          </div>
-          <div class="history-meta">
-            <span>${escapeHtml(row.generated_probability_pct)}</span>
-            <span>${escapeHtml(row.timestamp)}</span>
-          </div>
-        </div>
-      `).join('')}
-    </div>
-  `;
-}
-
-function pushHistory(record) {
-  const rows = readHistory();
-  rows.unshift(record);
-  writeHistory(rows.slice(0, 30));
-  renderHistory();
-}
-
-function downloadText(filename, text, mimeType) {
-  const blob = new Blob([text], { type: mimeType });
-  const url = URL.createObjectURL(blob);
-  const a = document.createElement('a');
-  a.href = url;
-  a.download = filename;
-  a.click();
-  URL.revokeObjectURL(url);
-}
-
-function toHistoryRecord(fileName, result) {
-  return {
-    file_name: fileName,
-    policy_profile_id: result.policy_profile_id,
-    policy_profile_name: result.policy_profile_name,
-    binary_label: result.binary_label,
-    decision_status: result.decision_status,
-    decision_text: result.decision_text,
-    platform_label: result.platform_label,
-    platform_label_text: result.platform_label_text,
-    platform_candidate: result.platform_candidate,
-    platform_candidate_text: result.platform_candidate_text,
-    platform_accepted: result.platform_accepted,
-    risk_level: result.risk_level,
-    risk_text: result.risk_text,
-    generated_probability: result.generated_probability,
-    generated_probability_pct: asPercent(result.generated_probability),
-    timestamp: new Date().toLocaleString('zh-CN')
-  };
-}
-
-function renderSingleReportHtml(fileName, result) {
-  const advice = decisionAdvice(result);
-  const usageRows = [
-    { title: '检测交付', body: advice.body },
-    ...resultUsageGuide(result)
-  ]
-    .map(item => `
-      <tr>
-        <td>${escapeHtml(item.title)}</td>
-        <td>${escapeHtml(item.body)}</td>
-      </tr>
-    `)
-    .join('');
-  const platformRows = Object.entries(result.platform_probabilities || {})
-    .sort((a, b) => b[1] - a[1])
-    .map(([label, prob]) => `
-      <tr>
-        <td>${escapeHtml(platformDisplayName(label))}</td>
-        <td>${asPercent(prob)}</td>
-      </tr>
-    `)
-    .join('');
-  const platformBlock = platformRows
-    ? `<table>
-          <thead><tr><th>候选平台</th><th>融合概率</th></tr></thead>
-          <tbody>${platformRows}</tbody>
-        </table>`
-    : '<p class="empty">当前未进入平台归因。只有 AI 生成概率达到阈值时，系统才输出四平台概率。</p>';
-  const signalRows = (result.signal_snapshot || [])
-    .map(item => `
-      <tr>
-        <td>${escapeHtml(item.label)}</td>
-        <td>${escapeHtml(item.value)}</td>
-      </tr>
-    `)
-    .join('');
-  const rationaleRows = (result.rationale || [])
-    .map(line => `<li>${escapeHtml(line)}</li>`)
-    .join('');
-
-  return `<!DOCTYPE html>
-<html lang="zh-CN">
-<head>
-  <meta charset="UTF-8">
-  <meta name="viewport" content="width=device-width, initial-scale=1.0">
-  <title>单张识别报告 - ${escapeHtml(fileName)}</title>
-  <style>
-    body{font-family:"Segoe UI","Microsoft YaHei",sans-serif;background:#fff7f3;color:#2b1b18;margin:0;padding:32px}
-    .wrap{max-width:980px;margin:0 auto}
-    .hero,.card{background:#fff;border:1px solid rgba(151,16,13,.1);border-radius:18px;box-shadow:0 18px 40px rgba(47,22,16,.08);padding:24px;margin-bottom:18px}
-    h1,h2{margin:0 0 12px}
-    .meta{display:flex;gap:12px;flex-wrap:wrap;margin-top:12px}
-    .pill{padding:8px 12px;border-radius:999px;background:rgba(151,16,13,.08);color:#97100d;font-weight:700}
-    .advice{padding:14px 16px;border-radius:14px;background:#fff9f5;border:1px solid rgba(151,16,13,.12);line-height:1.7}
-    .grid{display:grid;grid-template-columns:1fr 1fr;gap:18px}
-    table{width:100%;border-collapse:collapse}
-    th,td{padding:10px 12px;border-bottom:1px solid rgba(151,16,13,.08);text-align:left}
-    th{color:#97100d}
-    ul{margin:0;padding-left:20px;line-height:1.8}
-    @media (max-width:900px){.grid{grid-template-columns:1fr}body{padding:18px}}
-  </style>
-</head>
-<body>
-  <div class="wrap">
-    <section class="hero">
-      <h1>AI 图片识别与平台归因单张报告</h1>
-      <p>文件名：${escapeHtml(fileName)}</p>
-      <div class="meta">
-        <span class="pill">AI / real：${escapeHtml(decisionLabel(result))}</span>
-        <span class="pill">平台交付：${escapeHtml(result.platform_label_text)}</span>
-        <span class="pill">风险分流：${escapeHtml(result.risk_text || '未分流')}</span>
-        <span class="pill">策略：${escapeHtml(result.policy_profile_name || getSelectedPolicyName())}</span>
-        <span class="pill">AI 概率：${asPercent(result.generated_probability)}</span>
-        <span class="pill">导出时间：${escapeHtml(new Date().toLocaleString('zh-CN'))}</span>
-      </div>
-    </section>
-    <section class="card advice">
-      <h2>${escapeHtml(advice.title)}</h2>
-      <p>${escapeHtml(advice.body)}</p>
-    </section>
-    <section class="card">
-      <h2>检测交付与使用说明</h2>
-      <table>
-        <thead><tr><th>类型</th><th>内容</th></tr></thead>
-        <tbody>${usageRows}</tbody>
-      </table>
-    </section>
-    <section class="grid">
-      <article class="card">
-        <h2>平台候选概率</h2>
-        ${platformBlock}
-      </article>
-      <article class="card">
-        <h2>文件层信号</h2>
-        <table>
-          <thead><tr><th>信号</th><th>取值</th></tr></thead>
-          <tbody>${signalRows}</tbody>
-        </table>
-      </article>
-    </section>
-    <section class="card">
-      <h2>解释</h2>
-      <ul>${rationaleRows}</ul>
-    </section>
-  </div>
-</body>
-</html>`;
-}
-
-function markDropzone(active) {
-  dropzone.classList.toggle('is-dragover', active);
-}
-
-function resetPreview() {
-  previewImage.removeAttribute('src');
-  previewImage.style.display = 'none';
-  if (previewPlaceholder) {
-    previewPlaceholder.style.display = 'grid';
-  }
-}
-
-function renderPreview(file) {
-  const reader = new FileReader();
-  reader.onload = (event) => {
-    previewImage.src = event.target.result;
-    previewImage.style.display = 'block';
-    if (previewPlaceholder) {
-      previewPlaceholder.style.display = 'none';
-    }
-  };
-  reader.readAsDataURL(file);
-}
-
-function assignDroppedFiles(files) {
+function selectFiles(files) {
+  if (isBusy) return;
+  const validation = validateFiles(files);
+  if (!validation.ok) { fileInput.value = ''; setStatus(validation.message, 'error'); return; }
+  clearSelection();
+  selectedFiles = files;
   if (!files.length) return;
-  try {
-    const dataTransfer = new DataTransfer();
-    files.forEach(file => dataTransfer.items.add(file));
-    fileInput.files = dataTransfer.files;
-    fileInput.dispatchEvent(new Event('change', { bubbles: true }));
-  } catch {
-    setStatus('当前浏览器不支持拖拽批量赋值，请点击上传区域选择图片。', 'error');
-  }
+  const first = files[0];
+  fileMeta.className = 'file-meta';
+  fileMeta.innerHTML = `<strong>${escapeHtml(first.name)}${files.length > 1 ? `，另有 ${files.length - 1} 张` : ''}</strong><span>${formatBytes(files.reduce((sum, file) => sum + file.size, 0))}</span>`;
+  renderPreview(first);
+  updateQueueSummary(); updateControls();
+  setStatus(isStaticPreviewMode() ? '当前为界面预览，在线服务连接后可开始检测。' : `已选择 ${files.length} 张图片，确认后点击开始检测。`);
 }
-
-fileInput.addEventListener('change', () => {
-  clearResult();
-  lastBatchResults = [];
-  renderBatchResults();
-  updateQueueSummary();
-  renderFileMeta();
-
-  const selectedFiles = getSelectedFiles();
-  const validation = validateFiles(selectedFiles);
-  if (!validation.ok) {
-    fileInput.value = '';
-    renderFileMeta();
-    updateQueueSummary();
-    resetPreview();
-    setStatus(validation.message, 'error');
-    return;
-  }
-
-  const file = selectedFiles[0];
-  if (!file) {
-    resetPreview();
-    setStatus('等待上传');
-    return;
-  }
-
-  renderPreview(file);
-  setStatus(`已选择 ${escapeHtml(file.name)}${selectedFiles.length > 1 ? ` 等 ${selectedFiles.length} 张图片` : ''}`, 'success');
-
-  if (!isStaticPreviewMode() && selectedFiles.length > 1) {
-    setStatus(`已选择 ${selectedFiles.length} 张图片，准备自动批量识别`, 'working');
-    setTimeout(() => {
-      if (getSelectedFiles().length > 1 && !batchPredictBtn.disabled) {
-        batchPredictBtn.click();
-      }
-    }, 250);
-  }
-});
-
-['dragenter', 'dragover'].forEach(eventName => {
-  dropzone.addEventListener(eventName, (event) => {
-    event.preventDefault();
-    markDropzone(true);
-  });
-});
-
-dropzone.addEventListener('dragleave', () => {
-  markDropzone(false);
-});
-
-dropzone.addEventListener('drop', (event) => {
-  event.preventDefault();
-  markDropzone(false);
-  assignDroppedFiles(Array.from(event.dataTransfer?.files || []));
-});
-
-if (isStaticPreviewMode()) {
-  setStatus('当前是静态预览模式：可以查看 UI，但识别功能需要先启动本地后端服务。', 'warning');
-}
-
-function renderResult(result) {
-  const generatedPct = asPercent(result.generated_probability);
-  const pointerLeft = clampPercent(result.generated_probability);
-  const tone = decisionTone(result);
-  const advice = decisionAdvice(result);
-  const usageGuide = resultUsageGuide(result);
-  const badgeText = decisionLabel(result);
-  const realThresholdValue = result.thresholds ? Number(result.thresholds.real) : 0.45;
-  const generatedThresholdValue = result.thresholds ? Number(result.thresholds.generated) : 0.75;
-  const realThresholdPct = Number.isFinite(realThresholdValue) ? (realThresholdValue * 100).toFixed(0) : '45';
-  const generatedThresholdPct = Number.isFinite(generatedThresholdValue) ? (generatedThresholdValue * 100).toFixed(0) : '75';
-  const thresholdText = result.thresholds
-    ? `${result.policy_profile_name || '当前策略'}：真实 ≤ ${realThresholdPct}%，AI ≥ ${generatedThresholdPct}%`
-    : '';
-  const finalText = result.binary_label === 'generated'
-    ? result.platform_label_text
-    : badgeText;
-  const riskText = result.risk_text || (result.binary_label === 'real' ? '自动通过' : result.binary_label === 'uncertain' ? '人工复核' : '高风险核验');
-
-  resultSummary.innerHTML = `
-    <div class="result-card is-${tone}">
-      <div class="result-head">
-        <span class="result-badge is-${tone}">${escapeHtml(badgeText)}</span>
-        <span class="result-subtle">${escapeHtml(thresholdText || '保守阈值已启用')}</span>
-      </div>
-      <div class="result-metrics">
-        <div class="metric-tile">
-          <span>AI 生成概率</span>
-          <strong>${generatedPct}</strong>
-        </div>
-        <div class="metric-tile">
-          <span>${result.binary_label === 'generated' ? '平台归因' : '处理结论'}</span>
-          <strong>${escapeHtml(finalText)}</strong>
-        </div>
-        <div class="metric-tile">
-          <span>风险分流</span>
-          <strong>${escapeHtml(riskText)}</strong>
-        </div>
-      </div>
-      <div class="probability-meter" aria-label="AI 生成概率区间">
-        <div class="meter-track" style="--real-threshold:${realThresholdPct}%; --generated-threshold:${generatedThresholdPct}%">
-          <span class="meter-pointer" style="left:${pointerLeft}%"></span>
-        </div>
-        <div class="meter-labels">
-          <span>真实区 ≤${realThresholdPct}%</span>
-          <span>复核区</span>
-          <span>AI 区 ≥${generatedThresholdPct}%</span>
-        </div>
-      </div>
-      <div class="threshold-note">
-        ${escapeHtml(result.policy_profile_note || '当前策略用于在低误伤和高风险复核之间做取舍。')}
-      </div>
-      <div class="result-delivery">
-        <span>检测交付</span>
-        <strong>${escapeHtml(advice.title)}</strong>
-        <p>${escapeHtml(advice.body)}</p>
-      </div>
-      <div class="result-explanation">
-        <span class="usage-section-label">使用说明</span>
-        <div class="result-usage-grid">
-          ${usageGuide.map(item => `
-            <div class="usage-card">
-              <span>${escapeHtml(item.title)}</span>
-              <p>${escapeHtml(item.body)}</p>
-            </div>
-          `).join('')}
-        </div>
-      </div>
-    </div>
-  `;
-
-  const probabilityEntries = Object.entries(result.platform_probabilities || {});
-  const probabilityRows = probabilityEntries
-    .sort((a, b) => b[1] - a[1])
-    .map(([label, prob]) => {
-      const width = clampPercent(prob);
-      return `
-        <div class="prob-row">
-          <div class="prob-head">
-            <span>${escapeHtml(platformDisplayName(label))}</span>
-            <strong>${asPercent(prob)}</strong>
-          </div>
-          <div class="prob-track"><div class="prob-fill" style="width:${width}%"></div></div>
-        </div>
-      `;
-    })
-    .join('');
-  const platformDecisionBanner = result.binary_label === 'generated'
-    ? platformAttributionAccepted(result)
-      ? `<div class="platform-decision is-accepted">
-          <strong>归因已接受</strong>
-          <span>融合置信度 ${asPercent(result.platform_confidence)}，文件层模型与抗传播模型${result.platform_model_agreement ? '判断一致' : '给出不同候选'}。</span>
-        </div>`
-      : `<div class="platform-decision is-rejected">
-          <strong>开放集拒识</strong>
-          <span>${escapeHtml((result.platform_rejection_explanations || ['平台证据不足']).join('；'))}。下列数值是候选概率，不是平台定论。</span>
-        </div>`
-    : '';
-  const platformDiagnostics = result.binary_label === 'generated'
-    ? `<div class="platform-diagnostics">
-        <span>最高候选 ${escapeHtml(result.platform_candidate_text || '未知')}</span>
-        <span>前两名差值 ${asPercent(result.platform_margin)}</span>
-        <span>漂移分数 ${Number(result.platform_drift_score || 0).toFixed(3)}${result.platform_drift_flag ? '，已触发漂移复核' : ''}</span>
-      </div>`
-    : '';
-  platformProbabilities.innerHTML = probabilityRows ? `
-    ${platformDecisionBanner}
-    ${platformDiagnostics}
-    <div class="probability-list">${probabilityRows}</div>
-  ` : `
-    <div class="platform-gate">
-      <strong>未进入平台归因</strong>
-      <p>只有图片先被判为高置信 AI 生成时，系统才计算平台候选概率；真实图和二分类复核图不输出平台来源。</p>
-    </div>
-  `;
-
-  signalSnapshot.innerHTML = `
-    <div class="signal-list">
-      ${(result.signal_snapshot || []).map(item => `
-        <div class="signal-item">
-          <span>${escapeHtml(item.label)}</span>
-          <strong>${escapeHtml(item.value)}</strong>
-        </div>
-      `).join('')}
-    </div>
-  `;
-
-  rationaleBox.innerHTML = `
-    <div class="rationale-list">
-      ${(result.rationale || []).map((line, index) => `
-        <div><span>${index + 1}</span>${escapeHtml(line)}</div>
-      `).join('')}
-    </div>
-  `;
-
-  renderReviewSubmission(result);
-}
-
-function renderReviewSubmission(result) {
-  if (!reviewSubmitBox) return;
-  reviewSubmitBox.classList.remove('empty');
-  const riskText = result.risk_text || '人工复核';
-  const platformText = result.binary_label === 'generated'
-    ? platformAttributionAccepted(result)
-      ? result.platform_label_text
-      : `${result.platform_candidate_text || '未知'}，尚未接受`
-    : '未进入平台归因';
-  reviewSubmitBox.innerHTML = `
-    <div class="review-submit-copy">
-      <span>当前分流</span>
-      <strong>${escapeHtml(riskText)}</strong>
-      <p>AI 概率 ${asPercent(result.generated_probability)}；平台线索 ${escapeHtml(platformText)}。提交后只保存文件哈希和本页证据。</p>
-    </div>
-    <label class="review-note-field">
-      <span>补充说明</span>
-      <textarea id="reviewUserNote" rows="3" maxlength="2000" placeholder="可填写订单号、图片来源、需要核验的问题或已补充的证据"></textarea>
-    </label>
-    <button id="submitReviewBtn" type="button">提交人工复核</button>
-  `;
-}
-
-function reviewDecisionText(value) {
-  const mapping = {
-    confirmed_ai: '人工确认 AI',
-    confirmed_real: '人工确认真实',
-    insufficient_evidence: '证据不足',
-    '': '尚无人工结论'
-  };
-  return mapping[value] || value;
-}
-
-function reviewStatusText(value) {
-  const mapping = { pending: '待复核', reviewing: '核验中', resolved: '已完成' };
-  return mapping[value] || value;
-}
-
-function riskLevelText(value) {
-  const mapping = { low: '自动通过', review: '人工复核', high: '高风险核验' };
-  return mapping[value] || value;
-}
-
-async function loadReviewQueue() {
-  if (!reviewQueueList || isStaticPreviewMode()) return;
-  reviewQueueList.innerHTML = emptyState('正在读取', '正在同步最近复核案件。');
-  try {
-    const response = await fetch('/api/reviews?limit=20');
-    const data = await response.json();
-    if (!response.ok || data.status !== 'ok') throw new Error(data.message || '读取失败');
-    renderReviewQueue(data.cases || []);
-  } catch (error) {
-    reviewQueueList.innerHTML = emptyState('复核队列暂不可用', error.message);
-  }
-}
-
-function renderReviewQueue(cases) {
-  if (!reviewQueueList) return;
-  if (!cases.length) {
-    reviewQueueList.classList.add('empty');
-    reviewQueueList.innerHTML = emptyState('尚无复核案件', '提交当前识别结果后，案件会在这里显示。');
-    return;
-  }
-  reviewQueueList.classList.remove('empty');
-  reviewQueueList.innerHTML = `
-    <div class="review-case-list">
-      ${cases.map(item => `
-        <article class="review-case" data-case-id="${escapeHtml(item.case_id)}">
-          <div class="review-case-main">
-            <div class="review-case-title">
-              <strong>${escapeHtml(item.case_id)}</strong>
-              <span class="review-status is-${escapeHtml(item.status)}">${escapeHtml(reviewStatusText(item.status))}</span>
-            </div>
-            <p>${escapeHtml(item.file_name)}，AI 概率 ${asPercent(item.generated_probability)}，风险分流 ${escapeHtml(riskLevelText(item.risk_level))}</p>
-            <div class="review-case-evidence">
-              <span>平台交付 ${escapeHtml(platformDisplayName(item.platform_label))}</span>
-              <span>最高候选 ${escapeHtml(platformDisplayName(item.platform_candidate || '未知'))}</span>
-              <span>${escapeHtml(reviewDecisionText(item.reviewer_decision))}</span>
-            </div>
-          </div>
-          <div class="review-case-actions">
-            <input class="reviewer-note-input" type="text" maxlength="2000" value="${escapeHtml(item.reviewer_note || '')}" placeholder="填写人工核验说明">
-            <div>
-              <button type="button" class="ghost-btn" data-review-action="reviewing">开始核验</button>
-              <button type="button" class="ghost-btn" data-review-action="confirmed_ai">确认 AI</button>
-              <button type="button" class="ghost-btn" data-review-action="confirmed_real">确认真实</button>
-              <button type="button" class="ghost-btn" data-review-action="insufficient_evidence">证据不足</button>
-            </div>
-          </div>
-        </article>
-      `).join('')}
-    </div>
-  `;
-}
-
-async function submitCurrentReview() {
-  if (!lastSingleResult) {
-    setStatus('请先完成一次识别', 'warning');
-    return;
-  }
-  const payload = {
-    file_name: lastSingleFileName || getSelectedFiles()[0]?.name || 'unknown',
-    file_sha256: lastSingleResult.file_sha256,
-    binary_label: lastSingleResult.binary_label,
-    generated_probability: lastSingleResult.generated_probability,
-    platform_label: lastSingleResult.platform_label,
-    platform_candidate: lastSingleResult.platform_candidate,
-    platform_confidence: lastSingleResult.platform_confidence,
-    platform_margin: lastSingleResult.platform_margin,
-    model_agreement: lastSingleResult.platform_model_agreement,
-    drift_score: lastSingleResult.platform_drift_score,
-    risk_level: lastSingleResult.risk_level,
-    reason_codes: lastSingleResult.platform_rejection_reasons || [],
-    user_note: document.getElementById('reviewUserNote')?.value || ''
-  };
-  const button = document.getElementById('submitReviewBtn');
-  if (button) button.disabled = true;
-  try {
-    const response = await fetch('/api/reviews', {
-      method: 'POST',
-      headers: { 'Content-Type': 'application/json' },
-      body: JSON.stringify(payload)
-    });
-    const data = await response.json();
-    if (!response.ok || data.status !== 'ok') throw new Error(data.message || '提交失败');
-    setStatus(`已创建复核案件 ${data.case.case_id}，原始图片未被保存。`, 'success');
-    await loadReviewQueue();
-  } catch (error) {
-    setStatus(`复核提交失败：${error.message}`, 'error');
-  } finally {
-    if (button) button.disabled = false;
-  }
-}
-
-async function updateReviewCase(caseElement, action) {
-  const caseId = caseElement.dataset.caseId;
-  const reviewerNote = caseElement.querySelector('.reviewer-note-input')?.value || '';
-  const payload = action === 'reviewing'
-    ? { status: 'reviewing', reviewer_decision: '', reviewer_note: reviewerNote }
-    : { status: 'resolved', reviewer_decision: action, reviewer_note: reviewerNote };
-  try {
-    const response = await fetch(`/api/reviews/${encodeURIComponent(caseId)}`, {
-      method: 'PATCH',
-      headers: { 'Content-Type': 'application/json' },
-      body: JSON.stringify(payload)
-    });
-    const data = await response.json();
-    if (!response.ok || data.status !== 'ok') throw new Error(data.message || '更新失败');
-    setStatus(`复核案件 ${caseId} 已更新为${reviewStatusText(data.case.status)}。`, 'success');
-    await loadReviewQueue();
-  } catch (error) {
-    setStatus(`复核更新失败：${error.message}`, 'error');
-  }
-}
-
-async function requestPredict(file) {
-  const formData = new FormData();
-  formData.append('file', file);
-  formData.append('policy_profile', getSelectedPolicyProfile());
-  const response = await fetch('/api/predict', {
-    method: 'POST',
-    body: formData
-  });
-  const data = await response.json();
-  if (!response.ok || data.status !== 'ok') {
-    throw new Error(data.message || '识别失败');
-  }
-  return data.result;
-}
-
-function renderBatchSummary() {
-  const counts = lastBatchResults.reduce(
-    (acc, row) => {
-      acc[row.binary_label] = (acc[row.binary_label] || 0) + 1;
-      return acc;
-    },
-    { generated: 0, real: 0, uncertain: 0 }
-  );
-  return `
-    <div class="batch-summary">
-      <div><strong>${lastBatchResults.length}</strong><span>已识别</span></div>
-      <div><strong>${counts.generated || 0}</strong><span>AI 生成</span></div>
-      <div><strong>${counts.real || 0}</strong><span>真实图片</span></div>
-      <div><strong>${counts.uncertain || 0}</strong><span>人工复核</span></div>
-    </div>
-  `;
-}
-
-function renderBatchResults() {
-  if (!lastBatchResults.length) {
-    batchResults.innerHTML = emptyState('尚未执行批量识别', '批量模式会汇总 AI 生成、真实图片和人工复核三类结果。');
-    return;
-  }
-  batchResults.innerHTML = `
-    ${renderBatchSummary()}
-    <p class="batch-interpretation">批量结果用于风险排序和复核分流，不等于自动退款、处罚或封禁结论。</p>
-    <div class="table-wrap">
-      <table class="result-table">
-        <thead>
-          <tr>
-            <th>文件</th>
-            <th>AI / real</th>
-            <th>最终标签</th>
-            <th>策略</th>
-            <th>AI 概率</th>
-          </tr>
-        </thead>
-        <tbody>
-          ${lastBatchResults.map(row => `
-            <tr>
-              <td>${escapeHtml(row.file_name)}</td>
-              <td><span class="table-badge is-${decisionTone(row)}">${escapeHtml(decisionLabel(row))}</span></td>
-              <td>${escapeHtml(row.platform_label_text)}</td>
-              <td>${escapeHtml(row.policy_profile_name || '')}</td>
-              <td>${escapeHtml(row.generated_probability_pct)}</td>
-            </tr>
-          `).join('')}
-        </tbody>
-      </table>
-    </div>
-  `;
-}
-
-predictBtn.addEventListener('click', async () => {
-  if (isStaticPreviewMode()) {
-    setStatus('当前是静态预览模式。请先运行 webapp/ai_platform_demo.py，再访问 http://127.0.0.1:8765', 'warning');
-    return;
-  }
-  const files = getSelectedFiles();
-  const validation = validateFiles(files);
-  if (!validation.ok) {
-    setStatus(validation.message, 'error');
-    return;
-  }
-  const file = files[0];
-  if (!file) {
-    setStatus('请先上传图片', 'warning');
-    return;
-  }
-  setLoading(true);
-  setStatus('识别中：正在读取文件层留痕和图像统计特征。', 'working');
-  setProgress(35);
-  clearResult();
-
-  try {
-    const result = await requestPredict(file);
-    setProgress(92);
-    renderResult(result);
-    lastSingleResult = result;
-    lastSingleFileName = file.name;
-    pushHistory(toHistoryRecord(file.name, result));
-    setStatus('识别完成：结果已按结论、概率、证据和建议动作分层展示。', 'success');
-  } catch (error) {
-    setStatus(`识别失败：${error.message}`, 'error');
-  } finally {
-    setProgress(100);
-    setTimeout(() => setProgress(0), 500);
-    setLoading(false);
-    updateQueueSummary();
-  }
-});
-
-batchPredictBtn.addEventListener('click', async () => {
-  if (isStaticPreviewMode()) {
-    setStatus('当前是静态预览模式。请先运行 webapp/ai_platform_demo.py，再访问 http://127.0.0.1:8765', 'warning');
-    return;
-  }
-  const files = getSelectedFiles();
-  const validation = validateFiles(files);
-  if (!validation.ok) {
-    setStatus(validation.message, 'error');
-    return;
-  }
-  if (!files.length) {
-    setStatus('请先上传图片', 'warning');
-    return;
-  }
-  setLoading(true);
-  lastBatchResults = [];
-  renderBatchResults();
-  setProgress(5);
-
-  try {
-    for (let index = 0; index < files.length; index += 1) {
-      const file = files[index];
-      setStatus(`批量识别中 ${index + 1}/${files.length}：${file.name}`, 'working');
-      const result = await requestPredict(file);
-      if (index === 0) {
-        renderResult(result);
-        lastSingleResult = result;
-        lastSingleFileName = file.name;
-      }
-      const record = toHistoryRecord(file.name, result);
-      lastBatchResults.push(record);
-      pushHistory(record);
-      renderBatchResults();
-      updateQueueSummary();
-      setProgress(((index + 1) / files.length) * 100);
-    }
-    setStatus(`批量识别完成，共 ${files.length} 张。可导出 CSV 继续核验或留档。`, 'success');
-  } catch (error) {
-    setStatus(`批量识别失败：${error.message}`, 'error');
-  } finally {
-    setTimeout(() => setProgress(0), 500);
-    setLoading(false);
-  }
-});
-
-clearHistoryBtn.addEventListener('click', () => {
-  writeHistory([]);
-  renderHistory();
-  setStatus('历史记录已清空', 'success');
-});
-
-if (reviewSubmitBox) {
-  reviewSubmitBox.addEventListener('click', event => {
-    if (event.target.closest('#submitReviewBtn')) submitCurrentReview();
-  });
-}
-
-if (refreshReviewBtn) {
-  refreshReviewBtn.addEventListener('click', loadReviewQueue);
-}
-
-if (reviewQueueList) {
-  reviewQueueList.addEventListener('click', event => {
-    const button = event.target.closest('[data-review-action]');
-    const caseElement = event.target.closest('.review-case');
-    if (button && caseElement) updateReviewCase(caseElement, button.dataset.reviewAction);
-  });
-}
-
-policyInputs.forEach(input => {
-  input.addEventListener('change', () => {
-    clearResult();
-    renderPolicyMetricPreview();
-    setStatus(`已切换为${getSelectedPolicyName()}，请重新识别当前图片。`, 'working');
-  });
-});
-
-exportHistoryBtn.addEventListener('click', () => {
-  const rows = readHistory();
-  if (!rows.length) {
-    setStatus('没有可导出的历史记录', 'warning');
-    return;
-  }
-  downloadText(
-    'aigc_trace_history.json',
-    JSON.stringify(rows, null, 2),
-    'application/json;charset=utf-8'
-  );
-  setStatus('历史记录已导出', 'success');
-});
-
-exportBatchCsvBtn.addEventListener('click', () => {
-  if (!lastBatchResults.length) {
-    setStatus('没有可导出的批量结果', 'warning');
-    return;
-  }
-  const header = ['file_name', 'policy_profile_id', 'policy_profile_name', 'binary_label', 'decision_status', 'decision_text', 'platform_label', 'platform_label_text', 'generated_probability_pct'];
-  const lines = [
-    header.join(','),
-    ...lastBatchResults.map(row => header.map(key => `"${String(row[key] ?? '').replaceAll('"', '""')}"`).join(','))
+function resultUsageGuide(result) {
+  return [
+    { title: '核验建议', body: result.binary_label === 'real' ? '低评分不构成真实性保证。敏感场景中，请结合拍摄原件与上下文继续核验。' : '建议补充原始文件、生成或拍摄记录及相关上下文，由人工完成最终核验。' },
+    { title: '使用边界', body: platformAttributionAccepted(result) ? '来源判断限定于当前采样范围，不是生成平台的独立认证，也不能单独用于定责。' : '未接受的平台候选只提供排查线索，不应被当作已经确认的来源。' }
   ];
-  downloadText('aigc_batch_results.csv', lines.join('\n'), 'text/csv;charset=utf-8');
-  setStatus('批量结果已导出', 'success');
-});
-
-exportSingleReportBtn.addEventListener('click', () => {
-  if (!lastSingleResult) {
-    setStatus('没有可导出的单张识别结果', 'warning');
-    return;
+}
+function technicalRationale(result) {
+  return (result.rationale || []).map(line => String(line).replaceAll('·', ' ').replaceAll('默认展示档', '当前策略').replaceAll('运营低误伤', '低误判优先'));
+}
+function scoreEntries(result) {
+  if (result.binary_label !== 'generated') return [];
+  return Object.entries(result.platform_probabilities || {}).filter(([code, score]) => Object.hasOwn(PLATFORM_NAME_MAP, code) && typeof score === 'number' && Number.isFinite(score) && score >= 0 && score <= 1).sort((a, b) => b[1] - a[1]);
+}
+function sourceEvidence(result) {
+  const thresholds = result.platform_open_set_thresholds || {};
+  return [
+    ['平台候选评分', asPercent(result.platform_confidence), `接受阈值 ${asPercent(thresholds.confidence)}`],
+    ['前两名分差', asPercent(result.platform_margin), `接受阈值 ${asPercent(thresholds.margin)}`],
+    ['已知来源评分', asPercent(result.platform_knownness_score), `接受阈值 ${asPercent(thresholds.knownness)}`],
+    ['特征漂移评分', result.platform_drift_score != null && Number.isFinite(Number(result.platform_drift_score)) ? Number(result.platform_drift_score).toFixed(3) : '--', '反映与参考分布的差异'],
+    ['漂移检查', result.platform_drift_flag === true ? '触发拒绝' : result.platform_drift_flag === false ? '未触发' : '未提供', '触发时不接受平台归因'],
+    ['模型候选一致性', result.platform_model_agreement === true ? '一致' : result.platform_model_agreement === false ? '不一致' : '未提供', thresholds.require_agreement === true ? '当前要求模型候选一致' : thresholds.require_agreement === false ? '当前未要求一致' : '当前要求未提供'],
+  ];
+}
+function renderResult(result) {
+  resultsSection.hidden = false;
+  const accepted = platformAttributionAccepted(result);
+  const tone = decisionTone(result);
+  const score = Number(result.generated_probability);
+  reportMeta.textContent = result._client ? `${result._client.fileName} / ${new Date(result._client.createdAt).toLocaleString('zh-CN')}` : '';
+  resultSummary.innerHTML = `<div class="result-card is-${tone}"><div class="verdict-top"><span class="result-kicker">图像判断</span><span class="result-status">检测完成</span></div><h3 class="verdict-title">${escapeHtml(decisionLabel(result))}</h3><div class="verdict-data"><div class="score-block"><span>AI 生成评分</span><strong>${asPercent(score)}</strong></div><div class="source-block"><span>来源判断</span><strong>${escapeHtml(sourceLabel(result))}</strong></div></div><div class="score-track" aria-label="AI 生成评分 ${asPercent(score)}"><span style="width:${Math.max(0, Math.min(100, score * 100))}%"></span></div><p class="result-caption">${result.binary_label === 'uncertain' ? '当前信号处于复核区间，暂不作确定判断。' : result.binary_label === 'real' ? '当前特征更接近真实图片，不继续推断生成平台。' : accepted ? '来源证据满足当前模型的接受条件。' : '生成评分较高，但来源证据尚不足以接受平台归因。'}</p></div>`;
+  const entries = scoreEntries(result);
+  platformProbabilities.innerHTML = entries.length ? `<div class="platform-decision ${accepted ? 'is-accepted' : 'is-rejected'}"><strong>${accepted ? `来源候选已接受：${escapeHtml(sourceLabel(result))}` : '来源证据不足，暂无法归因'}</strong></div><div class="probability-list">${entries.map(([code, probability]) => `<div class="prob-row"><div class="prob-head"><span>${escapeHtml(platformDisplayName(code))}</span><strong>${asPercent(probability)}</strong></div><div class="prob-track"><span class="prob-fill" style="width:${Number(probability) * 100}%"></span></div></div>`).join('')}</div><p class="candidate-note">候选分数不代表来源已被独立确认。</p>` : '<div class="source-empty"><span class="empty-rule"></span><strong>未进行来源归因</strong><p>仅对进入 AI 高评分区的图片进一步分析来源。</p></div>';
+  signalSnapshot.innerHTML = `<dl class="signal-list">${(result.signal_snapshot || []).map(item => `<div class="signal-item"><dt>${escapeHtml(item.label)}</dt><dd>${escapeHtml(item.value)}</dd></div>`).join('')}</dl>`;
+  rationaleBox.innerHTML = `<ol class="rationale-list">${technicalRationale(result).map(line => `<li>${escapeHtml(line)}</li>`).join('')}</ol>`;
+  gateDetails.innerHTML = result.binary_label === 'generated' ? `<h3>来源接受条件与诊断</h3><dl class="gate-grid">${sourceEvidence(result).map(([label, value, note]) => `<div><dt>${escapeHtml(label)}</dt><dd>${escapeHtml(value)}</dd><small>${escapeHtml(note)}</small></div>`).join('')}</dl><p>${escapeHtml((result.platform_rejection_explanations || []).join('；') || (accepted ? '当前服务返回来源归因已接受。' : '当前服务未提供通过接受条件的来源结论。'))}</p>` : '';
+  usageGuide.innerHTML = resultUsageGuide(result).map(item => `<div><h3>${escapeHtml(item.title)}</h3><p>${escapeHtml(item.body)}</p></div>`).join('');
+}
+function renderLoading() {
+  resultsSection.hidden = false;
+  evidenceDetails.open = false;
+  usageDetails.open = false;
+  signalSnapshot.innerHTML = '';
+  rationaleBox.innerHTML = '';
+  gateDetails.innerHTML = '';
+  usageGuide.innerHTML = '';
+  reportMeta.textContent = '正在读取图像与文件信息';
+  resultSummary.innerHTML = '<div class="skeleton" aria-hidden="true"><span></span><span></span><span></span></div>';
+  platformProbabilities.innerHTML = '<div class="skeleton" aria-hidden="true"><span></span><span></span><span></span></div>';
+}
+function renderBatchResults() {
+  batchSection.hidden = selectedFiles.length <= 1 || (!lastBatchResults.length && !failures.size && !isBusy);
+  const rows = selectedFiles.map((file, index) => {
+    const result = resultCache.get(file);
+    const error = failures.get(file);
+    return `<tr ${activeFile === file ? 'class="is-selected"' : ''}><td><button class="batch-select" type="button" data-file-index="${index}" ${isBusy || !result ? 'disabled' : ''}>${escapeHtml(file.name)}</button></td><td>${result ? `<span class="table-badge is-${decisionTone(result)}">${escapeHtml(decisionLabel(result))}</span>` : error ? '<span class="table-badge is-error">检测失败</span>' : '等待检测'}</td><td>${result ? escapeHtml(sourceLabel(result)) : error ? escapeHtml(error) : '--'}</td><td>${result ? asPercent(result.generated_probability) : '--'}</td></tr>`;
+  }).join('');
+  batchResults.innerHTML = `<div class="batch-summary"><span>已完成 <strong>${completedFiles.size} / ${selectedFiles.length}</strong></span>${failures.size ? `<span class="error-count">${failures.size} 张未完成，可重试</span>` : ''}</div><div class="table-wrap" tabindex="0" aria-label="批量检测结果，可横向滚动"><table class="result-table"><thead><tr><th>图片</th><th>图像判断</th><th>来源判断</th><th>AI 生成评分</th></tr></thead><tbody>${rows}</tbody></table></div>`;
+}
+function validPrediction(result) {
+  return result && ['real', 'generated', 'uncertain'].includes(result.binary_label) && typeof result.generated_probability === 'number' && Number.isFinite(result.generated_probability) && result.generated_probability >= 0 && result.generated_probability <= 1;
+}
+async function requestPredict(file, signal, profileId) {
+  const controller = new AbortController();
+  let timedOut = false;
+  const relayAbort = () => controller.abort();
+  signal.addEventListener('abort', relayAbort, { once: true });
+  if (signal.aborted) controller.abort();
+  const timeout = setTimeout(() => { timedOut = true; controller.abort(); }, REQUEST_TIMEOUT_MS);
+  try {
+    const formData = new FormData();
+    formData.append('file', file); formData.append('policy_profile', profileId);
+    const response = await fetch('/api/predict', { method: 'POST', body: formData, signal: controller.signal });
+    let data;
+    try { data = await response.json(); } catch { throw new Error('服务暂时未返回有效结果，请稍后重试。'); }
+    if (!response.ok || data.status !== 'ok') {
+      const messages = {
+        400: '图片无法读取，请确认文件完整，或重新导出为 PNG、JPEG、WEBP。',
+        413: '图片超出服务接收限制，请缩小文件后重试。',
+        422: '图片无法处理，请重新导出后重试。',
+        429: '当前请求较多，请稍后再试。',
+      };
+      throw new Error(messages[response.status] || (response.status >= 500 ? '检测服务暂时不可用，请稍后重试。' : '图片未能完成检测，请稍后重试。'));
+    }
+    if (!validPrediction(data.result)) throw new Error('服务返回的检测数据不完整，请重试。');
+    return data.result;
+  } catch (error) {
+    if (signal.aborted) throw Object.assign(new Error('已停止等待'), { name: 'AbortError' });
+    if (timedOut) throw new Error('等待超时，服务可能正在启动或繁忙，请稍后重试。');
+    if (error instanceof TypeError) throw new Error(navigator.onLine === false ? '网络已断开，请连接后重试。' : '无法连接检测服务，请检查网络后重试。');
+    throw error;
+  } finally { clearTimeout(timeout); signal.removeEventListener('abort', relayAbort); }
+}
+function selectResult(file, moveFocus = false) {
+  const result = resultCache.get(file);
+  if (!result) return;
+  renderPreview(file); renderResult(result);
+  lastSingleResult = result; lastSingleFileName = file.name;
+  updateControls(); renderBatchResults();
+  if (moveFocus) focusResults();
+}
+function focusResults() {
+  resultsTitle.focus({ preventScroll: true });
+  resultsSection.scrollIntoView({ behavior: window.matchMedia('(prefers-reduced-motion: reduce)').matches ? 'auto' : 'smooth', block: 'start' });
+}
+async function runDetection() {
+  if (isBusy || !selectedFiles.length || isStaticPreviewMode()) return;
+  if (completedFiles.size === selectedFiles.length) {
+    resultCache.clear(); completedFiles.clear(); failures.clear(); lastBatchResults = [];
+    lastSingleResult = null; lastSingleFileName = '';
   }
-  const html = renderSingleReportHtml(lastSingleFileName || 'single_result', lastSingleResult);
-  const safeName = (lastSingleFileName || 'single_result').replace(/[^\w.-]+/g, '_');
-  downloadText(`aigc_single_report_${safeName}.html`, html, 'text/html;charset=utf-8');
-  setStatus('单张报告已导出', 'success');
-});
+  const todo = selectedFiles.filter(file => !completedFiles.has(file));
+  const revision = ++runRevision;
+  const profileId = getSelectedPolicyProfile();
+  currentController = new AbortController();
+  const signal = currentController.signal;
+  isBusy = true;
+  updateControls(); updateQueueSummary(); setProgress(completedFiles.size, selectedFiles.length);
+  if (!lastSingleResult || !resultCache.size) renderLoading();
+  const slowTimer = setTimeout(() => { if (isBusy && revision === runRevision) setStatus('分析仍在进行，服务启动或大型文件可能需要更多时间。', 'working'); }, 15000);
+  try {
+    for (const file of todo) {
+      if (signal.aborted || revision !== runRevision) break;
+      failures.delete(file);
+      setStatus(`正在分析 ${selectedFiles.indexOf(file) + 1} / ${selectedFiles.length}：${file.name}`, 'working');
+      try {
+        const raw = await requestPredict(file, signal, profileId);
+        if (signal.aborted || revision !== runRevision) break;
+        const result = { ...raw, _client: { fileName: file.name, fileSize: file.size, createdAt: new Date().toISOString(), reportId: `IMG-${crypto.randomUUID().slice(0, 8).toUpperCase()}` } };
+        resultCache.set(file, result); completedFiles.add(file); failures.delete(file);
+        lastBatchResults = selectedFiles.filter(item => resultCache.has(item)).map(item => resultCache.get(item));
+        if (!lastSingleResult || !resultCache.has(activeFile)) selectResult(file);
+      } catch (error) {
+        if (signal.aborted || revision !== runRevision) break;
+        failures.set(file, error.message);
+      }
+      updateQueueSummary(); setProgress(completedFiles.size, selectedFiles.length); renderBatchResults();
+    }
+    if (revision !== runRevision) return;
+    if (signal.aborted) setStatus('已停止等待，已完成的结果仍可查看与导出。', 'warning');
+    else if (failures.size) setStatus(`${failures.size} 张图片未完成。${selectedFiles.length === 1 ? failures.get(selectedFiles[0]) : '已完成结果保留，可重试未完成图片。'}`, 'error');
+    else setStatus(`检测完成${selectedFiles.length > 1 ? `，共 ${completedFiles.size} 张` : ''}。可查看结果或导出报告。`, 'success');
+    if (!completedFiles.size) clearResult();
+  } finally {
+    clearTimeout(slowTimer);
+    if (revision === runRevision) {
+      isBusy = false; currentController = null; progressWrap.hidden = true;
+      updateControls(); updateQueueSummary(); renderBatchResults();
+      if (lastSingleResult && !signal.aborted) focusResults();
+    }
+  }
+}
+function cancelDetection() {
+  currentController?.abort();
+  cancelBtn.disabled = true;
+  setStatus('正在停止等待，已完成的结果将保留。', 'warning');
+}
+function downloadText(fileName, text, mimeType) {
+  const url = URL.createObjectURL(new Blob([text], { type: mimeType }));
+  const link = document.createElement('a'); link.href = url; link.download = fileName; link.hidden = true;
+  document.body.appendChild(link); link.click(); link.remove();
+  setTimeout(() => URL.revokeObjectURL(url), 1000);
+}
+function safeCsvCell(value) {
+  const text = String(value ?? '');
+  return `"${(/^[\s]*[=+@-]/.test(text) ? "'" + text : text).replaceAll('"', '""')}"`;
+}
+function buildBatchCsv(results) {
+  const rows = [['检测编号', '文件名', '图像判断', '来源判断', 'AI生成评分', '检测时间'], ...results.map(result => [result._client.reportId, result._client.fileName, decisionLabel(result), sourceLabel(result), asPercent(result.generated_probability), result._client.createdAt])];
+  return '\uFEFF' + rows.map(row => row.map(safeCsvCell).join(',')).join('\r\n');
+}
+function renderSingleReportHtml(fileName, result) {
+  const metadata = result._client || {};
+  const rows = (result.signal_snapshot || []).map(item => `<tr><th>${escapeHtml(item.label)}</th><td>${escapeHtml(item.value)}</td></tr>`).join('');
+  const platformRows = scoreEntries(result).map(([code, score]) => `<tr><th>${escapeHtml(platformDisplayName(code))}</th><td>${asPercent(score)}</td></tr>`).join('');
+  return `<!DOCTYPE html><html lang="zh-CN"><head><meta charset="UTF-8"><meta name="viewport" content="width=device-width,initial-scale=1"><title>图像检测报告 ${escapeHtml(metadata.reportId || '')}</title><style>body{margin:0;background:#f7f4ee;color:#292723;font:14px/1.85 'PingFang SC','Microsoft YaHei',sans-serif}.report{max-width:880px;margin:32px auto;padding:40px;background:#fffefd;border-top:4px solid #7b252b}header{border-bottom:1px solid #ddd5cb;padding-bottom:22px}h1,h2{font-family:'Songti SC',SimSun,Georgia,serif;font-weight:600}h1{font-size:32px;margin:8px 0}h2{font-size:22px;margin:28px 0 12px}.kicker{color:#7b252b;font-size:12px;letter-spacing:.1em}.meta{font-size:12px;color:#706a62;overflow-wrap:anywhere}.conclusion{border-bottom:1px solid #ddd5cb;padding:22px 0}.conclusion h2{margin:0 0 10px}.grid{display:grid;grid-template-columns:1fr 1fr;gap:24px}table{width:100%;border-collapse:collapse}th,td{padding:10px 8px;border-bottom:1px solid #e2dcd2;text-align:left;font-size:13px}th{font-weight:500;width:55%}.score{font:36px Georgia,serif;color:#7b252b}.usage{border-top:1px solid #ddd5cb;margin-top:28px;padding-top:16px;font-size:12px;color:#706a62}li{padding-left:8px;margin-bottom:10px}button{border:1px solid #7b252b;background:transparent;color:#7b252b;padding:9px 15px;cursor:pointer}.hash{overflow-wrap:anywhere;font-family:monospace;font-size:11px}@media(max-width:650px){.report{margin:0;padding:24px}.grid{grid-template-columns:1fr}h1{font-size:26px}}@media print{body{background:white}.report{margin:0;padding:12px;border:0}button{display:none}h2,tr{break-inside:avoid}h2{break-after:avoid}}</style></head><body><main class="report"><header><span class="kicker">AIGC 标识治理研究</span><h1>图像检测报告</h1><p class="meta">检测编号：${escapeHtml(metadata.reportId || '未提供')}<br>文件名：${escapeHtml(fileName)}<br>检测时间：${escapeHtml(metadata.createdAt ? new Date(metadata.createdAt).toLocaleString('zh-CN') : '未提供')}</p><button onclick="window.print()" type="button">打印 / 保存为 PDF</button></header><section class="conclusion"><h2>${escapeHtml(decisionLabel(result))}</h2><p>AI 生成评分：<strong class="score">${asPercent(result.generated_probability)}</strong></p><p>来源判断：<strong>${escapeHtml(sourceLabel(result))}</strong></p></section><div class="grid"><section><h2>文件与图像信号</h2><table>${rows}</table></section><section><h2>平台候选评分</h2>${platformRows ? `<table>${platformRows}</table><p class="meta">候选评分不代表来源已经独立确认。${platformAttributionAccepted(result) ? '当前服务接受了来源候选。' : '当前服务未接受平台归因。'}</p>` : '<p>未进行来源归因。</p>'}</section></div>${result.binary_label === 'generated' ? `<section><h2>来源接受条件与诊断</h2><table>${sourceEvidence(result).map(([label, value, note]) => `<tr><th>${escapeHtml(label)}</th><td>${escapeHtml(value)}<br><span class="meta">${escapeHtml(note)}</span></td></tr>`).join('')}</table><p class="meta">${escapeHtml((result.platform_rejection_explanations || []).join('；') || (platformAttributionAccepted(result) ? '当前服务返回来源归因已接受。' : '当前服务未接受平台归因。'))}</p></section>` : ''}<section><h2>判断依据</h2><ol>${technicalRationale(result).map(line => `<li>${escapeHtml(line)}</li>`).join('')}</ol><p class="meta">检测策略：${escapeHtml(POLICY_NAMES[result.policy_profile_id] || result.policy_profile_id || '未提供')}<br>真实区阈值：${asPercent(result.thresholds?.real)} / AI 区阈值：${asPercent(result.thresholds?.generated)}</p>${result.file_sha256 ? `<p class="meta">原始文件 SHA-256</p><p class="hash">${escapeHtml(result.file_sha256)}</p>` : ''}</section><aside class="usage"><h2>使用说明</h2><p>以上评分是模型输出，不是经校准的真实风险率。结果用于辅助核验，不构成真实性证明或独立的平台认证。</p>${resultUsageGuide(result).map(item => `<p><strong>${escapeHtml(item.title)}</strong>：${escapeHtml(item.body)}</p>`).join('')}</aside></main></body></html>`;
+}
 
-updateQueueSummary();
-renderFileMeta();
-renderBatchResults();
-renderHistory();
-renderPolicyMetricPreview();
-clearResult();
-loadReviewQueue();
+fileInput.addEventListener('change', () => selectFiles(Array.from(fileInput.files || [])));
+predictBtn.addEventListener('click', runDetection);
+clearFilesBtn.addEventListener('click', clearSelection);
+cancelBtn.addEventListener('click', cancelDetection);
+['dragenter', 'dragover'].forEach(name => dropzone.addEventListener(name, event => { event.preventDefault(); if (!isBusy) dropzone.classList.add('is-dragover'); }));
+dropzone.addEventListener('dragleave', () => dropzone.classList.remove('is-dragover'));
+dropzone.addEventListener('drop', event => { event.preventDefault(); dropzone.classList.remove('is-dragover'); if (!isBusy) selectFiles(Array.from(event.dataTransfer?.files || [])); });
+policyInputs.forEach(input => input.addEventListener('change', () => {
+  if (isBusy) return;
+  runRevision += 1; resultCache.clear(); completedFiles.clear(); failures.clear(); lastBatchResults = [];
+  clearResult(); updateQueueSummary(); updateControls();
+  setStatus(`已切换为${getSelectedPolicyName()}，可重新开始检测。`);
+}));
+batchResults.addEventListener('click', event => { const button = event.target.closest('[data-file-index]'); if (!isBusy && button) selectResult(selectedFiles[Number(button.dataset.fileIndex)], true); });
+exportSingleReportBtn.addEventListener('click', () => {
+  if (!lastSingleResult || isBusy) return;
+  downloadText(`图像检测报告_${lastSingleResult._client.reportId}.html`, renderSingleReportHtml(lastSingleFileName, lastSingleResult), 'text/html;charset=utf-8');
+  setStatus('已发起报告下载，请在浏览器下载列表中查看。', 'success');
+});
+exportBatchCsvBtn.addEventListener('click', () => {
+  if (!lastBatchResults.length || isBusy) return;
+  downloadText('图像批量检测结果.csv', buildBatchCsv(lastBatchResults), 'text/csv;charset=utf-8');
+  setStatus('已发起 CSV 下载，请在浏览器下载列表中查看。', 'success');
+});
+byId('helpBtn').addEventListener('click', () => helpDialog.showModal());
+byId('footerHelpBtn').addEventListener('click', () => helpDialog.showModal());
+byId('closeHelpBtn').addEventListener('click', () => helpDialog.close());
+helpDialog.addEventListener('click', event => { if (event.target === helpDialog) { const bounds = helpDialog.getBoundingClientRect(); if (event.clientX < bounds.left || event.clientX > bounds.right || event.clientY < bounds.top || event.clientY > bounds.bottom) helpDialog.close(); } });
+window.addEventListener('pagehide', () => {
+  runRevision += 1; currentController?.abort();
+  if (previewUrl) URL.revokeObjectURL(previewUrl);
+  previewUrl = '';
+});
+window.addEventListener('pageshow', event => {
+  if (!event.persisted) return;
+  isBusy = false; currentController = null; progressWrap.hidden = true;
+  if (activeFile) renderPreview(activeFile);
+  if (lastSingleResult) renderResult(lastSingleResult); else clearResult();
+  updateControls(); updateQueueSummary(); renderBatchResults();
+  if (selectedFiles.length) setStatus('已返回检测页，已完成结果仍可查看；未完成图片可继续检测。');
+});
+updateControls();
