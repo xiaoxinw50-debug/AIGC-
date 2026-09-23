@@ -7,8 +7,8 @@
   <meta name="description" content="分析图片的 AI 生成评分与平台来源候选，查看文件层证据并导出检测报告。">
   <title>AI 图片识别与平台归因</title>
   <link rel="icon" href="data:image/svg+xml,%3Csvg xmlns='http://www.w3.org/2000/svg' viewBox='0 0 32 32'%3E%3Crect width='32' height='32' rx='5' fill='%237b252b'/%3E%3Cpath d='M8 13V8h5m6 0h5v5M8 19v5h5m6 0h5v-5' fill='none' stroke='white' stroke-width='2'/%3E%3C/svg%3E">
-  <link rel="stylesheet" href="../static/style.css?v=laboratory-20260920">
-  <script src="../static/app.js?v=laboratory-20260920" defer></script>
+  <link rel="stylesheet" href="../static/style.css?v=laboratory-20260923-mobile-v2">
+  <script src="../static/app.js?v=laboratory-20260923-mobile-v2" defer></script>
 </head>
 <body>
   <a class="skip-link" href="#detection">跳至图片检测</a>
@@ -56,7 +56,7 @@
       <details id="usageDetails" class="usage-details"><summary>如何使用本次结果</summary><div id="usageGuide" class="usage-guide"></div></details>
     </section>
 
-    <section id="batchSection" class="batch-section" aria-labelledby="batchTitle" hidden><div class="section-heading"><div><h2 id="batchTitle">批量检测结果</h2><p>选择一条记录，查看对应原图与完整报告。</p></div><button id="exportBatchCsvBtn" type="button" class="ghost-btn" disabled>导出 CSV</button></div><div id="batchResults"></div></section>
+    <section id="batchSection" class="batch-section" aria-labelledby="batchTitle" hidden><div class="section-heading"><div><h2 id="batchTitle">批量检测结果</h2><p>选择一条记录，查看对应原图与完整报告。</p><p class="mobile-table-hint">左右滑动表格可查看完整字段。</p></div><button id="exportBatchCsvBtn" type="button" class="ghost-btn" disabled>导出 CSV</button></div><div id="batchResults"></div></section>
     <footer class="site-footer"><span>AIGC 标识治理研究</span><button id="footerHelpBtn" class="text-button" type="button">使用与隐私说明</button></footer>
   </main>
   <dialog id="helpDialog" class="help-dialog" aria-labelledby="helpTitle"><div class="dialog-heading"><div><p class="eyebrow">使用说明</p><h2 id="helpTitle">了解检测与结果</h2></div><button id="closeHelpBtn" type="button" class="dialog-close" aria-label="关闭使用说明">×</button></div><div class="help-content"><section><h3>如何开始</h3><p>选择或拖入 PNG、JPEG、WEBP 图片，确认预览后点击开始检测。支持单张与批量，每批最多 20 张。优先提供原始导出文件。</p></section><section><h3>如何理解结果</h3><p>AI 生成评分是当前分类模型的输出，不等于经过校准的真实风险率。图像判断与来源判断为两个独立环节；仅在来源证据满足接受条件时给出平台，否则保留暂无法归因。</p><p>来源分析限定于已采样范围。截图、压缩与转存可能改变文件留痕，证件照与白底商品图也可能需要进一步核验。</p></section><section><h3>隐私与记录</h3><p>选图阶段仅在当前浏览器中预览，点击检测后图片才发送到服务端分析。服务端处理结束后清理临时图片。页面不写入跨会话历史，刷新或关闭后不保留本次前端结果；已下载的报告由你自行管理。</p><p>停止等待会中断当前浏览器请求，但不保证服务端已开始的计算同步停止。</p></section></div></dialog>

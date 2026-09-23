@@ -32,6 +32,7 @@ const exportSingleReportBtn = byId('exportSingleReportBtn');
 const exportBatchCsvBtn = byId('exportBatchCsvBtn');
 const selectedPolicyLabel = byId('selectedPolicyLabel');
 const helpDialog = byId('helpDialog');
+const uploadPanel = document.querySelector('.upload-panel');
 const dropzone = document.querySelector('.upload-dropzone');
 const policyInputs = Array.from(document.querySelectorAll('input[name="policyProfile"]'));
 const MAX_FILE_SIZE = 16 * 1024 * 1024;
@@ -157,6 +158,7 @@ function clearSelection() {
   runRevision += 1;
   currentController?.abort();
   selectedFiles = [];
+  uploadPanel.classList.remove('has-selection');
   fileInput.value = '';
   resultCache.clear(); completedFiles.clear(); failures.clear();
   lastBatchResults = [];
@@ -174,6 +176,7 @@ function selectFiles(files) {
   clearSelection();
   selectedFiles = files;
   if (!files.length) return;
+  uploadPanel.classList.add('has-selection');
   const first = files[0];
   fileMeta.className = 'file-meta';
   fileMeta.innerHTML = `<strong>${escapeHtml(first.name)}${files.length > 1 ? `，另有 ${files.length - 1} 张` : ''}</strong><span>${formatBytes(files.reduce((sum, file) => sum + file.size, 0))}</span>`;
