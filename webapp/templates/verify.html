@@ -1,0 +1,419 @@
+<!doctype html>
+<html lang="zh-CN">
+<head>
+  <meta charset="utf-8">
+  <meta name="viewport" content="width=device-width, initial-scale=1">
+  <meta name="robots" content="noindex, nofollow">
+  <title>检测报告验证</title>
+  <style>
+    :root {
+      --wine: #751f20;
+      --wine-deep: #4a1518;
+      --ink: #241d1c;
+      --muted: #716665;
+      --paper: #fbf8f3;
+      --line: #d8cbc1;
+      --valid: #23633f;
+      --invalid: #a32d2d;
+    }
+
+    * { box-sizing: border-box; }
+    [hidden] { display: none !important; }
+
+    body {
+      margin: 0;
+      color: var(--ink);
+      background:
+        radial-gradient(circle at 12% 8%, rgba(117, 31, 32, 0.08), transparent 30rem),
+        linear-gradient(180deg, #f6f0ea 0%, var(--paper) 42%, #f4eee8 100%);
+      font-family: "Times New Roman", "FangSong", "仿宋", serif;
+      line-height: 1.65;
+    }
+
+    .page {
+      width: min(1080px, calc(100% - 32px));
+      margin: 0 auto;
+      padding: 48px 0 72px;
+    }
+
+    .masthead {
+      padding: 34px 40px 30px;
+      color: #fffdf9;
+      background: linear-gradient(115deg, var(--wine) 0%, var(--wine-deep) 100%);
+      border-top: 5px solid #b99369;
+    }
+
+    .eyebrow {
+      margin: 0 0 8px;
+      font-size: 14px;
+      letter-spacing: 0.14em;
+      opacity: 0.8;
+    }
+
+    h1 {
+      margin: 0;
+      font-size: clamp(34px, 5vw, 58px);
+      line-height: 1.1;
+      font-weight: 700;
+      letter-spacing: 0.03em;
+    }
+
+    .sheet {
+      padding: 38px 40px 44px;
+      background: rgba(255, 253, 249, 0.96);
+      border: 1px solid var(--line);
+      border-top: 0;
+      box-shadow: 0 24px 64px rgba(69, 40, 34, 0.11);
+    }
+
+    .status-row {
+      display: flex;
+      align-items: flex-start;
+      justify-content: space-between;
+      gap: 24px;
+      padding-bottom: 28px;
+      border-bottom: 2px solid var(--wine);
+    }
+
+    .status {
+      display: inline-flex;
+      align-items: center;
+      gap: 10px;
+      color: var(--valid);
+      font-size: 23px;
+      font-weight: 700;
+    }
+
+    .status::before {
+      content: "";
+      width: 11px;
+      height: 11px;
+      background: currentColor;
+      border-radius: 50%;
+      box-shadow: 0 0 0 5px rgba(35, 99, 63, 0.12);
+    }
+
+    .status.invalid { color: var(--invalid); }
+
+    .status.invalid::before { box-shadow: 0 0 0 5px rgba(163, 45, 45, 0.12); }
+
+    .report-id {
+      margin-top: 8px;
+      color: var(--muted);
+      font-size: 16px;
+      overflow-wrap: anywhere;
+    }
+
+    .seal {
+      min-width: 116px;
+      padding: 9px 14px;
+      color: var(--wine);
+      border: 1px solid var(--wine);
+      text-align: center;
+      font-size: 13px;
+      letter-spacing: 0.08em;
+    }
+
+    .section { padding-top: 30px; }
+
+    h2 {
+      margin: 0 0 16px;
+      color: var(--wine);
+      font-size: 21px;
+      line-height: 1.3;
+    }
+
+    .facts {
+      display: grid;
+      grid-template-columns: repeat(2, minmax(0, 1fr));
+      border-top: 1px solid var(--ink);
+      border-bottom: 1px solid var(--ink);
+    }
+
+    .fact {
+      display: grid;
+      grid-template-columns: 132px minmax(0, 1fr);
+      gap: 16px;
+      padding: 12px 8px;
+      border-bottom: 1px solid var(--line);
+    }
+
+    .fact:nth-last-child(-n + 2) { border-bottom: 0; }
+    .fact dt { color: var(--muted); }
+    .fact dd { margin: 0; font-weight: 600; overflow-wrap: anywhere; }
+
+    .evidence {
+      display: grid;
+      grid-template-columns: repeat(3, minmax(0, 1fr));
+      gap: 1px;
+      background: var(--line);
+      border: 1px solid var(--line);
+    }
+
+    .evidence article {
+      min-height: 180px;
+      padding: 22px;
+      background: #fffdf9;
+    }
+
+    .evidence h3 {
+      margin: 0 0 10px;
+      font-size: 17px;
+    }
+
+    .evidence p { margin: 0; color: var(--muted); }
+    .evidence .keys { margin-top: 14px; color: var(--ink); overflow-wrap: anywhere; }
+
+    .hash {
+      padding: 14px 16px;
+      background: #f2ebe5;
+      border-left: 3px solid var(--wine);
+      font-size: 14px;
+      overflow-wrap: anywhere;
+    }
+
+    .limitations {
+      margin: 0;
+      padding: 18px 22px 18px 42px;
+      color: var(--muted);
+      background: #f7f1eb;
+    }
+
+    .actions {
+      display: flex;
+      justify-content: space-between;
+      gap: 18px;
+      margin-top: 34px;
+      padding-top: 20px;
+      border-top: 1px solid var(--line);
+    }
+
+    .actions a { color: var(--wine); font-weight: 700; text-decoration: none; }
+    .actions span { color: var(--muted); font-size: 14px; }
+
+    .invalid-message {
+      margin: 30px 0 4px;
+      padding: 22px;
+      color: var(--invalid);
+      background: #fff2f0;
+      border-left: 4px solid var(--invalid);
+      font-size: 18px;
+    }
+
+    .loading {
+      padding: 30px 0;
+      color: var(--muted);
+      font-size: 18px;
+    }
+
+    .model-table {
+      width: 100%;
+      border-collapse: collapse;
+      border-top: 1px solid var(--ink);
+      border-bottom: 1px solid var(--ink);
+    }
+
+    .model-table th,
+    .model-table td {
+      padding: 11px 8px;
+      border-bottom: 1px solid var(--line);
+      text-align: left;
+      vertical-align: top;
+    }
+
+    .model-table tr:last-child th,
+    .model-table tr:last-child td { border-bottom: 0; }
+    .model-table th { width: 160px; color: var(--muted); font-weight: 400; }
+    .model-table td { overflow-wrap: anywhere; }
+
+    @media (max-width: 760px) {
+      .page { width: min(100% - 18px, 1080px); padding: 9px 0 30px; }
+      .masthead, .sheet { padding-left: 22px; padding-right: 22px; }
+      .status-row { flex-direction: column; }
+      .facts { grid-template-columns: 1fr; }
+      .fact:nth-last-child(-n + 2) { border-bottom: 1px solid var(--line); }
+      .fact:last-child { border-bottom: 0; }
+      .evidence { grid-template-columns: 1fr; }
+      .actions { flex-direction: column; }
+    }
+  </style>
+</head>
+<body>
+  <main class="page">
+    <header class="masthead">
+      <p class="eyebrow">AIGC 标识治理项目</p>
+      <h1>检测报告验证</h1>
+    </header>
+
+    <section class="sheet">
+      <div id="loadingState" class="loading">正在核验报告签名与内容完整性</div>
+
+      <div id="validState" hidden>
+      <div class="status-row">
+        <div>
+          <div class="status">签名有效</div>
+          <div id="reportId" class="report-id"></div>
+        </div>
+        <div class="seal">报告内容未变更<br><span id="algorithm"></span></div>
+      </div>
+
+      <section class="section">
+        <h2>签发与判定</h2>
+        <dl class="facts">
+          <div class="fact"><dt>签发时间</dt><dd id="issuedAt"></dd></div>
+          <div class="fact"><dt>签发方</dt><dd id="issuer"></dd></div>
+          <div class="fact"><dt>文件名</dt><dd id="fileName"></dd></div>
+          <div class="fact"><dt>文件格式</dt><dd id="fileFormat"></dd></div>
+          <div class="fact"><dt>AI 判定</dt><dd id="decisionText"></dd></div>
+          <div class="fact"><dt>生成概率</dt><dd id="generatedProbability"></dd></div>
+          <div class="fact"><dt>来源线索</dt><dd id="platformText"></dd></div>
+          <div class="fact"><dt>风险等级</dt><dd id="riskText"></dd></div>
+        </dl>
+      </section>
+
+      <section class="section">
+        <h2>标识与文件层证据</h2>
+        <div class="evidence">
+          <article>
+            <h3>显式标识</h3>
+            <p id="explicitLabelText"></p>
+          </article>
+          <article>
+            <h3>隐式标识</h3>
+            <p id="implicitLabelText"></p>
+            <p id="implicitLabelKeys" class="keys"></p>
+          </article>
+          <article>
+            <h3>生成元数据线索</h3>
+            <p>该项只记录字段名，不保存字段值或原始图片。</p>
+            <p id="generationClueKeys" class="keys"></p>
+          </article>
+        </div>
+        <p id="standardScopeNote"></p>
+      </section>
+
+      <section class="section">
+        <h2>完整性校验</h2>
+        <p>图像 SHA-256</p>
+        <div id="imageSha256" class="hash"></div>
+        <p>报告内容 SHA-256</p>
+        <div id="payloadSha256" class="hash"></div>
+      </section>
+
+      <section class="section">
+        <h2>模型版本</h2>
+        <table class="model-table"><tbody id="modelRows"></tbody></table>
+      </section>
+
+      <section class="section">
+        <h2>适用边界</h2>
+        <ol id="limitations" class="limitations"></ol>
+      </section>
+
+      <footer class="actions">
+        <a href="/">返回检测平台</a>
+        <span>验证页不保存用户上传的原始图片</span>
+      </footer>
+      </div>
+
+      <div id="invalidState" hidden>
+      <div class="status invalid">验证未通过</div>
+      <div id="invalidMessage" class="invalid-message"></div>
+      <footer class="actions">
+        <a href="/">返回检测平台</a>
+        <span>请检查报告链接是否完整</span>
+      </footer>
+      </div>
+    </section>
+  </main>
+  <script>
+    'use strict';
+    const byId = id => document.getElementById(id);
+    const setText = (id, value) => { byId(id).textContent = value ?? '未记录'; };
+    const decisionNames = { generated: 'AI 生成倾向较高', real: '更接近真实图', uncertain: '需要进一步核验' };
+    const platformNames = { PLT01: '文心一言', PLT02: '通义千问', PLT03: '即梦AI', PLT05: '智谱 GLM-Image' };
+    const riskNames = { high: '高风险', medium: '中风险', low: '低风险' };
+
+    function showInvalid(message) {
+      byId('loadingState').hidden = true;
+      byId('validState').hidden = true;
+      byId('invalidState').hidden = false;
+      setText('invalidMessage', message || '报告凭证无效或内容已被修改。');
+    }
+
+    function appendModelRow(label, value) {
+      const row = document.createElement('tr');
+      const heading = document.createElement('th');
+      const cell = document.createElement('td');
+      heading.textContent = label;
+      cell.textContent = value;
+      row.append(heading, cell);
+      byId('modelRows').appendChild(row);
+    }
+
+    function showValid(data) {
+      const report = data.payload || {};
+      const decision = report.decision || {};
+      const file = report.file || {};
+      const evidence = report.label_evidence || {};
+      const implicit = evidence.implicit_label || {};
+      const clues = evidence.generation_metadata_clues || {};
+      const release = report.model_release || {};
+
+      setText('reportId', `报告编号 ${report.report_id || '未记录'}`);
+      setText('algorithm', data.algorithm);
+      setText('issuedAt', report.issued_at);
+      setText('issuer', report.issuer);
+      setText('fileName', file.name);
+      setText('fileFormat', file.format);
+      setText('decisionText', decisionNames[decision.binary_label] || decision.binary_label);
+      setText('generatedProbability', Number.isFinite(decision.generated_probability) ? `${(decision.generated_probability * 100).toFixed(2)}%` : '未记录');
+      setText('platformText', decision.platform_accepted === true ? (platformNames[decision.platform_label] || decision.platform_label) : '暂无法归因');
+      setText('riskText', riskNames[decision.risk_level] || decision.risk_level);
+      setText('explicitLabelText', evidence.explicit_label?.text);
+      setText('implicitLabelText', implicit.text);
+      setText('implicitLabelKeys', `检出字段 ${(implicit.detected_keys || []).join(', ') || '无'}`);
+      setText('generationClueKeys', `检出字段 ${(clues.detected_keys || []).join(', ') || '无'}`);
+      setText('standardScopeNote', evidence.standard_scope_note);
+      setText('imageSha256', file.sha256);
+      setText('payloadSha256', data.payload_sha256);
+
+      byId('modelRows').replaceChildren();
+      appendModelRow('开放集版本', release.open_set_version || '未记录');
+      for (const [name, model] of Object.entries(release.models || {})) {
+        appendModelRow(name, `${model.file || '未记录'} / SHA-256 ${model.sha256 || '未记录'}`);
+      }
+
+      byId('limitations').replaceChildren();
+      for (const item of report.limitations || []) {
+        const listItem = document.createElement('li');
+        listItem.textContent = item;
+        byId('limitations').appendChild(listItem);
+      }
+
+      byId('loadingState').hidden = true;
+      byId('invalidState').hidden = true;
+      byId('validState').hidden = false;
+    }
+
+    async function verifyReport() {
+      const token = new URLSearchParams(window.location.hash.slice(1)).get('token');
+      if (!token) { showInvalid('缺少报告验证凭证。'); return; }
+      try {
+        const response = await fetch('/api/reports/verify', {
+          method: 'POST',
+          headers: { 'Content-Type': 'application/json' },
+          body: JSON.stringify({ token }),
+        });
+        const data = await response.json();
+        if (!response.ok || data.valid !== true) throw new Error(data.message || '报告验证失败。');
+        showValid(data);
+      } catch (error) {
+        showInvalid(error instanceof Error ? error.message : '报告验证失败。');
+      }
+    }
+
+    verifyReport();
+  </script>
+</body>
+</html>

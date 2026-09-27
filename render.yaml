@@ -9,3 +9,9 @@ services:
     envVars:
       - key: PYTHON_VERSION
         value: 3.11.10
+      - key: AIGC_REPORT_SIGNING_KEY
+        generateValue: true
+      - key: AIGC_REPORT_ISSUER
+        value: 北京大学文化数据治理实验室 AIGC 标识治理项目
+      - key: AIGC_PUBLIC_BASE_URL
+        value: https://aigc-image-inference-demo.onrender.com

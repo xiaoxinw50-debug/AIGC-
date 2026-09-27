@@ -13,6 +13,17 @@ from PIL import Image
 
 from model_payload import ensure_model_artifacts
 from origin_utils import load_bundle, predict_one
+from report_verification import (
+    InvalidReportToken,
+    REPORT_SCHEMA_VERSION,
+    ReportSigningUnavailable,
+    build_model_manifest,
+    build_report_payload,
+    inspect_label_evidence,
+    issue_report,
+    signing_ready,
+    verify_report_token,
+)
 from review_store import create_case, database_path, export_csv, init_db, list_cases, persistence_mode, update_case
 
 
@@ -21,6 +32,8 @@ MODEL_DIR = ensure_model_artifacts(ROOT)
 BINARY_BUNDLE = MODEL_DIR / "binary_model_bundle.joblib"
 PLATFORM_BUNDLE = MODEL_DIR / "platform_model_bundle.joblib"
 ROBUST_PLATFORM_BUNDLE = MODEL_DIR / "platform_robust_model_bundle.joblib"
+PUBLIC_PLATFORM_BUNDLE = MODEL_DIR / "platform_public_prior_model_bundle.joblib"
+KNOWNNESS_GATE_BUNDLE = MODEL_DIR / "platform_knownness_gate_bundle.joblib"
 PLATFORM_OPEN_SET_CONFIG = MODEL_DIR / "platform_open_set_config.json"
 BINARY_TOP = MODEL_DIR / "binary_top_features.csv"
 PLATFORM_TOP = MODEL_DIR / "platform_top_features.csv"
@@ -32,10 +45,22 @@ app.config["MAX_CONTENT_LENGTH"] = 16 * 1024 * 1024
 binary_bundle = load_bundle(BINARY_BUNDLE)
 platform_bundle = load_bundle(PLATFORM_BUNDLE)
 robust_platform_bundle = load_bundle(ROBUST_PLATFORM_BUNDLE) if ROBUST_PLATFORM_BUNDLE.exists() else None
+public_platform_bundle = load_bundle(PUBLIC_PLATFORM_BUNDLE) if PUBLIC_PLATFORM_BUNDLE.exists() else None
+knownness_gate_bundle = load_bundle(KNOWNNESS_GATE_BUNDLE) if KNOWNNESS_GATE_BUNDLE.exists() else None
 platform_open_set_config = (
     json.loads(PLATFORM_OPEN_SET_CONFIG.read_text(encoding="utf-8"))
     if PLATFORM_OPEN_SET_CONFIG.exists()
     else {}
+)
+REPORT_MODEL_MANIFEST = build_model_manifest(
+    {
+        "binary": BINARY_BUNDLE,
+        "platform_native": PLATFORM_BUNDLE,
+        "platform_robust": ROBUST_PLATFORM_BUNDLE,
+        "platform_public": PUBLIC_PLATFORM_BUNDLE,
+        "knownness_gate": KNOWNNESS_GATE_BUNDLE,
+    },
+    platform_open_set_config.get("version", "disabled"),
 )
 init_db()
 
@@ -202,6 +227,7 @@ def format_signal_snapshot(snapshot: dict[str, float]) -> list[dict[str, str]]:
 
 
 PLATFORM_REJECTION_TEXT = {
+    "unknown_generator_gate": "已知来源得分未达到接受阈值，图片更接近未采样生成器或非原生导出链路",
     "confidence_below_threshold": "融合后的最高平台概率未达到接受阈值",
     "margin_below_threshold": "第一候选与第二候选差距过小",
     "model_disagreement": "文件层模型与抗传播模型判断不一致",
@@ -228,16 +254,16 @@ def build_rationale(prediction: dict) -> list[str]:
         lines.append("证件照、白底商品图、截图和压缩后的真实图容易呈现背景干净、留痕较少、尺寸规整等特征，当前版本将这类边界样本优先交给人工复核。")
     elif prediction.get("platform_accepted"):
         lines.append(
-            f"当前模型先判断为 generated，概率为 {prediction['pred_prob_generated']:.4f}，达到 AI 阈值 {prediction['generated_threshold']:.2f}；两条归因证据融合后的最高概率为 {prediction['platform_confidence']:.4f}，达到开放集接受阈值，因此给出 {platform_label_text(prediction['pred_final_label'])}。"
+            f"当前模型先判断为 generated，概率为 {prediction['pred_prob_generated']:.4f}，达到 AI 阈值 {prediction['generated_threshold']:.2f}；平台融合概率为 {prediction['platform_confidence']:.4f}，已知来源得分为 {prediction['platform_knownness_score']:.4f}，两项均达到开放集接受阈值，因此给出 {platform_label_text(prediction['pred_final_label'])}。"
         )
     else:
         reasons = [PLATFORM_REJECTION_TEXT.get(code, code) for code in prediction.get("platform_rejection_reasons", [])]
         lines.append(
-            f"图片已进入 generated 区，但平台归因未通过开放集接受条件。当前最高候选为 {platform_label_text(prediction['pred_platform_if_generated'])}，融合概率 {prediction['platform_confidence']:.4f}；系统输出未知平台并进入人工复核。"
+            f"图片已进入 generated 区，但平台归因未通过开放集接受条件。当前最高候选为 {platform_label_text(prediction['pred_platform_if_generated'])}，融合概率为 {prediction['platform_confidence']:.4f}，已知来源得分为 {prediction['platform_knownness_score']:.4f}；系统输出未知平台并进入人工复核。"
         )
         if reasons:
             lines.append("本次拒识原因：" + "；".join(reasons) + "。")
-    lines.append("平台归因同时使用原生导出模型和抗传播模型：前者侧重文件层与导出链路，后者侧重颜色、边缘、噪声与频域统计，而不是只看图片语义内容。")
+    lines.append("平台归因同时使用原生导出、抗传播和公开平台族先验三条证据路径；已知来源门控再判断图片是否仍属于当前采样范围，而不是只看最高平台概率。")
 
     signal_parts = []
     if snap["is_png"] >= 0.5:
@@ -254,10 +280,10 @@ def build_rationale(prediction: dict) -> list[str]:
     lines.append("这张图当前被模型重点利用的直接信号包括：" + "、".join(signal_parts) + "。")
     if prediction["pred_binary_label"] == "generated" and prediction.get("platform_accepted"):
         lines.append(
-            f"文件层模型候选为 {platform_label_text(prediction['platform_native_pred'])}，抗传播模型候选为 {platform_label_text(prediction['platform_robust_pred'])}；特征漂移分数为 {prediction['platform_drift_score']:.3f}。结果仍是审核线索，不是单独定责依据。"
+            f"原生导出模型候选为 {platform_label_text(prediction['platform_native_pred'])}，抗传播模型候选为 {platform_label_text(prediction['platform_robust_pred'])}，公开平台族先验候选为 {platform_label_text(prediction['platform_public_pred'])}；特征漂移分数为 {prediction['platform_drift_score']:.3f}。结果仍是审核线索，不是单独定责依据。"
         )
     elif prediction["pred_binary_label"] == "generated":
-        lines.append("候选平台概率仅用于安排调查顺序；在开放集拒识状态下，页面不会把最高候选包装成确定来源。")
+        lines.append("候选平台概率仅用于安排调查顺序；在来源门控拒识状态下，页面不会把最高候选包装成确定来源。")
     else:
         lines.append("因此，本次结果应理解为低成本初筛；真实证件照、证书照和白底商品图等边界样本仍应保留人工复核。")
     return lines
@@ -284,6 +310,8 @@ def health():
             "binary_model": str(BINARY_BUNDLE.relative_to(ROOT)),
             "platform_model": str(PLATFORM_BUNDLE.relative_to(ROOT)),
             "robust_platform_model": str(ROBUST_PLATFORM_BUNDLE.relative_to(ROOT)) if ROBUST_PLATFORM_BUNDLE.exists() else None,
+            "public_platform_model": str(PUBLIC_PLATFORM_BUNDLE.relative_to(ROOT)) if PUBLIC_PLATFORM_BUNDLE.exists() else None,
+            "knownness_gate_model": str(KNOWNNESS_GATE_BUNDLE.relative_to(ROOT)) if KNOWNNESS_GATE_BUNDLE.exists() else None,
             "platform_open_set": platform_open_set_config.get("version", "disabled"),
             "generated_threshold": GENERATED_THRESHOLD,
             "real_threshold": REAL_THRESHOLD,
@@ -293,6 +321,11 @@ def health():
                 "persistence_mode": persistence_mode(),
                 "database_path": str(database_path()),
                 "stores_original_images": False,
+            },
+            "report_verification": {
+                "schema_version": REPORT_SCHEMA_VERSION,
+                "algorithm": "HMAC-SHA256",
+                "signing_ready": signing_ready(),
             },
         }
     )
@@ -316,6 +349,8 @@ def predict_api():
     except Exception:
         return jsonify({"status": "error", "message": "unsupported or broken image"}), 400
 
+    label_evidence = inspect_label_evidence(raw)
+
     suffix = Path(file.filename).suffix or ".png"
     temp_path = None
     try:
@@ -329,6 +364,8 @@ def predict_api():
             platform_bundle,
             robust_platform_bundle,
             platform_open_set_config,
+            public_platform_bundle=public_platform_bundle,
+            knownness_gate_bundle=knownness_gate_bundle,
             generated_threshold=float(policy["generated_threshold"]),
             real_threshold=float(policy["real_threshold"]),
         )
@@ -341,10 +378,7 @@ def predict_api():
     rationale = build_rationale(prediction)
     file_sha256 = hashlib.sha256(raw).hexdigest()
 
-    return jsonify(
-        {
-            "status": "ok",
-            "result": {
+    result_payload = {
                 "binary_label": prediction["pred_binary_label"],
                 "decision_status": prediction["decision_status"],
                 "decision_text": prediction["decision_text"],
@@ -368,19 +402,26 @@ def predict_api():
                 "platform_confidence": prediction["platform_confidence"],
                 "platform_margin": prediction["platform_margin"],
                 "platform_model_agreement": prediction["platform_model_agreement"],
+                "platform_knownness_score": prediction["platform_knownness_score"],
                 "platform_native_label": prediction["platform_native_pred"],
                 "platform_robust_label": prediction["platform_robust_pred"],
+                "platform_public_label": prediction["platform_public_pred"],
                 "platform_drift_score": prediction["platform_drift_score"],
                 "platform_drift_flag": prediction["platform_drift_flag"],
-                "platform_rejection_reasons": prediction["platform_rejection_reasons"],
+                "platform_rejection_reasons": prediction["platform_rejection_reasons"]
+                if prediction["pred_binary_label"] == "generated"
+                else [],
                 "platform_rejection_explanations": [
                     PLATFORM_REJECTION_TEXT.get(code, code)
                     for code in prediction["platform_rejection_reasons"]
-                ],
+                ]
+                if prediction["pred_binary_label"] == "generated"
+                else [],
                 "platform_open_set_version": prediction["platform_open_set_version"],
                 "platform_open_set_thresholds": {
                     "confidence": prediction["platform_min_confidence"],
                     "margin": prediction["platform_min_margin"],
+                    "knownness": prediction["platform_min_knownness_score"],
                     "require_agreement": prediction["platform_require_agreement"],
                 },
                 "risk_level": prediction["risk_level"],
@@ -402,11 +443,60 @@ def predict_api():
                     "test_generated_risk_capture_rate": prediction["policy_profile"].get("test_generated_risk_capture_rate"),
                     "test_review_rate": prediction["policy_profile"].get("test_review_rate"),
                 },
-            },
+                "label_evidence": label_evidence,
+                "model_release": REPORT_MODEL_MANIFEST,
+    }
+
+    if signing_ready():
+        try:
+            report_payload = build_report_payload(
+                file_name=file.filename,
+                file_sha256=file_sha256,
+                result=result_payload,
+                label_evidence=label_evidence,
+                model_manifest=REPORT_MODEL_MANIFEST,
+            )
+            verification_base_url = os.environ.get("AIGC_PUBLIC_BASE_URL", request.host_url)
+            result_payload["report_verification"] = issue_report(report_payload, verification_base_url)
+        except ReportSigningUnavailable:
+            result_payload["report_verification"] = {
+                "status": "unavailable",
+                "schema_version": REPORT_SCHEMA_VERSION,
+                "reason": "报告签发服务未配置",
+            }
+    else:
+        result_payload["report_verification"] = {
+            "status": "unavailable",
+            "schema_version": REPORT_SCHEMA_VERSION,
+            "reason": "报告签发服务未配置",
+        }
+
+    return jsonify(
+        {
+            "status": "ok",
+            "result": result_payload,
             "global_binary_features": GLOBAL_BINARY_FEATURES,
             "global_platform_features": GLOBAL_PLATFORM_FEATURES,
         }
     )
+
+
+@app.post("/api/reports/verify")
+def report_verify_api():
+    payload = request.get_json(silent=True) or {}
+    token = payload.get("token", "")
+    try:
+        verified = verify_report_token(token)
+    except ReportSigningUnavailable as exc:
+        return jsonify({"status": "error", "valid": False, "message": str(exc)}), 503
+    except InvalidReportToken as exc:
+        return jsonify({"status": "error", "valid": False, "message": str(exc)}), 400
+    return jsonify({"status": "ok", **verified})
+
+
+@app.get("/verify")
+def report_verify_page():
+    return render_template("verify.html")
 
 
 @app.get("/api/reviews")

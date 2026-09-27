@@ -208,12 +208,26 @@ function sourceEvidence(result) {
     ['模型候选一致性', result.platform_model_agreement === true ? '一致' : result.platform_model_agreement === false ? '不一致' : '未提供', thresholds.require_agreement === true ? '当前要求模型候选一致' : thresholds.require_agreement === false ? '当前未要求一致' : '当前要求未提供'],
   ];
 }
+function reportVerification(result) {
+  const value = result?.report_verification;
+  return value && typeof value === 'object' ? value : { status: 'unavailable' };
+}
+function signedReport(result) { return reportVerification(result).status === 'signed'; }
+function safeVerificationUrl(value) {
+  return typeof value === 'string' && /^https?:\/\//i.test(value) ? value : '';
+}
+function readableEvidenceStatus(value) {
+  return { detected: '已检出', not_detected: '未检出', manual_review_required: '需要人工核验', unreadable: '无法读取' }[value] || '未记录';
+}
+function modelReleaseRows(result) {
+  return Object.entries(result?.model_release?.models || {}).map(([name, model]) => [name, `${model.file || '未记录'} / SHA-256 ${model.sha256 || '未记录'}`]);
+}
 function renderResult(result) {
   resultsSection.hidden = false;
   const accepted = platformAttributionAccepted(result);
   const tone = decisionTone(result);
   const score = Number(result.generated_probability);
-  reportMeta.textContent = result._client ? `${result._client.fileName} / ${new Date(result._client.createdAt).toLocaleString('zh-CN')}` : '';
+  reportMeta.textContent = result._client ? `${result._client.fileName} / ${new Date(result._client.createdAt).toLocaleString('zh-CN')} / 报告 ${result._client.reportId}` : '';
   resultSummary.innerHTML = `<div class="result-card is-${tone}"><div class="verdict-top"><span class="result-kicker">图像判断</span><span class="result-status">检测完成</span></div><h3 class="verdict-title">${escapeHtml(decisionLabel(result))}</h3><div class="verdict-data"><div class="score-block"><span>AI 生成评分</span><strong>${asPercent(score)}</strong></div><div class="source-block"><span>来源判断</span><strong>${escapeHtml(sourceLabel(result))}</strong></div></div><div class="score-track" aria-label="AI 生成评分 ${asPercent(score)}"><span style="width:${Math.max(0, Math.min(100, score * 100))}%"></span></div><p class="result-caption">${result.binary_label === 'uncertain' ? '当前信号处于复核区间，暂不作确定判断。' : result.binary_label === 'real' ? '当前特征更接近真实图片，不继续推断生成平台。' : accepted ? '来源证据满足当前模型的接受条件。' : '生成评分较高，但来源证据尚不足以接受平台归因。'}</p></div>`;
   const entries = scoreEntries(result);
   platformProbabilities.innerHTML = entries.length ? `<div class="platform-decision ${accepted ? 'is-accepted' : 'is-rejected'}"><strong>${accepted ? `来源候选已接受：${escapeHtml(sourceLabel(result))}` : '来源证据不足，暂无法归因'}</strong></div><div class="probability-list">${entries.map(([code, probability]) => `<div class="prob-row"><div class="prob-head"><span>${escapeHtml(platformDisplayName(code))}</span><strong>${asPercent(probability)}</strong></div><div class="prob-track"><span class="prob-fill" style="width:${Number(probability) * 100}%"></span></div></div>`).join('')}</div><p class="candidate-note">候选分数不代表来源已被独立确认。</p>` : '<div class="source-empty"><span class="empty-rule"></span><strong>未进行来源归因</strong><p>仅对进入 AI 高评分区的图片进一步分析来源。</p></div>';
@@ -312,7 +326,16 @@ async function runDetection() {
       try {
         const raw = await requestPredict(file, signal, profileId);
         if (signal.aborted || revision !== runRevision) break;
-        const result = { ...raw, _client: { fileName: file.name, fileSize: file.size, createdAt: new Date().toISOString(), reportId: `IMG-${crypto.randomUUID().slice(0, 8).toUpperCase()}` } };
+        const verification = reportVerification(raw);
+        const result = {
+          ...raw,
+          _client: {
+            fileName: file.name,
+            fileSize: file.size,
+            createdAt: verification.issued_at || new Date().toISOString(),
+            reportId: verification.report_id || `LOCAL-${crypto.randomUUID().slice(0, 8).toUpperCase()}`,
+          },
+        };
         resultCache.set(file, result); completedFiles.add(file); failures.delete(file);
         lastBatchResults = selectedFiles.filter(item => resultCache.has(item)).map(item => resultCache.get(item));
         if (!lastSingleResult || !resultCache.has(activeFile)) selectResult(file);
@@ -352,14 +375,37 @@ function safeCsvCell(value) {
   return `"${(/^[\s]*[=+@-]/.test(text) ? "'" + text : text).replaceAll('"', '""')}"`;
 }
 function buildBatchCsv(results) {
-  const rows = [['检测编号', '文件名', '图像判断', '来源判断', 'AI生成评分', '检测时间'], ...results.map(result => [result._client.reportId, result._client.fileName, decisionLabel(result), sourceLabel(result), asPercent(result.generated_probability), result._client.createdAt])];
+  const rows = [['检测编号', '文件名', '图像判断', '来源判断', 'AI生成评分', '报告状态', '报告内容SHA256', '验证地址', '检测时间'], ...results.map(result => {
+    const verification = reportVerification(result);
+    return [result._client.reportId, result._client.fileName, decisionLabel(result), sourceLabel(result), asPercent(result.generated_probability), verification.status === 'signed' ? '已签发' : '未签发', verification.payload_sha256 || '', safeVerificationUrl(verification.verification_url), result._client.createdAt];
+  })];
   return '\uFEFF' + rows.map(row => row.map(safeCsvCell).join(',')).join('\r\n');
 }
 function renderSingleReportHtml(fileName, result) {
   const metadata = result._client || {};
+  const verification = reportVerification(result);
+  const verificationUrl = safeVerificationUrl(verification.verification_url);
+  const labelEvidence = result.label_evidence || {};
+  const explicitLabel = labelEvidence.explicit_label || {};
+  const implicitLabel = labelEvidence.implicit_label || {};
+  const generationClues = labelEvidence.generation_metadata_clues || {};
+  const fileMetadata = labelEvidence.file_metadata || {};
   const rows = (result.signal_snapshot || []).map(item => `<tr><th>${escapeHtml(item.label)}</th><td>${escapeHtml(item.value)}</td></tr>`).join('');
   const platformRows = scoreEntries(result).map(([code, score]) => `<tr><th>${escapeHtml(platformDisplayName(code))}</th><td>${asPercent(score)}</td></tr>`).join('');
-  return `<!DOCTYPE html><html lang="zh-CN"><head><meta charset="UTF-8"><meta name="viewport" content="width=device-width,initial-scale=1"><title>图像检测报告 ${escapeHtml(metadata.reportId || '')}</title><style>body{margin:0;background:#f7f4ee;color:#292723;font:14px/1.85 'Times New Roman','FangSong','STFangsong','仿宋',serif}.report{max-width:880px;margin:32px auto;padding:40px;background:#fffefd;border-top:4px solid #7b252b}header{border-bottom:1px solid #ddd5cb;padding-bottom:22px}h1,h2{font-family:'Times New Roman','FangSong','STFangsong','仿宋',serif;font-weight:600}h1{font-size:32px;margin:8px 0}h2{font-size:22px;margin:28px 0 12px}.kicker{color:#7b252b;font-size:12px;letter-spacing:.1em}.meta{font-size:12px;color:#706a62;overflow-wrap:anywhere}.conclusion{border-bottom:1px solid #ddd5cb;padding:22px 0}.conclusion h2{margin:0 0 10px}.grid{display:grid;grid-template-columns:1fr 1fr;gap:24px}table{width:100%;border-collapse:collapse}th,td{padding:10px 8px;border-bottom:1px solid #e2dcd2;text-align:left;font-size:13px}th{font-weight:500;width:55%}.score{font:36px 'Times New Roman','FangSong','STFangsong','仿宋',serif;color:#7b252b}.usage{border-top:1px solid #ddd5cb;margin-top:28px;padding-top:16px;font-size:12px;color:#706a62}li{padding-left:8px;margin-bottom:10px}button{border:1px solid #7b252b;background:transparent;color:#7b252b;padding:9px 15px;cursor:pointer}.hash{overflow-wrap:anywhere;font-family:'Times New Roman','FangSong','STFangsong','仿宋',serif;font-size:11px}@media(max-width:650px){.report{margin:0;padding:24px}.grid{grid-template-columns:1fr}h1{font-size:26px}}@media print{body{background:white}.report{margin:0;padding:12px;border:0}button{display:none}h2,tr{break-inside:avoid}h2{break-after:avoid}}</style></head><body><main class="report"><header><span class="kicker">AIGC 标识治理研究</span><h1>图像检测报告</h1><p class="meta">检测编号：${escapeHtml(metadata.reportId || '未提供')}<br>文件名：${escapeHtml(fileName)}<br>检测时间：${escapeHtml(metadata.createdAt ? new Date(metadata.createdAt).toLocaleString('zh-CN') : '未提供')}</p><button onclick="window.print()" type="button">打印 / 保存为 PDF</button></header><section class="conclusion"><h2>${escapeHtml(decisionLabel(result))}</h2><p>AI 生成评分：<strong class="score">${asPercent(result.generated_probability)}</strong></p><p>来源判断：<strong>${escapeHtml(sourceLabel(result))}</strong></p></section><div class="grid"><section><h2>文件与图像信号</h2><table>${rows}</table></section><section><h2>平台候选评分</h2>${platformRows ? `<table>${platformRows}</table><p class="meta">候选评分不代表来源已经独立确认。${platformAttributionAccepted(result) ? '当前服务接受了来源候选。' : '当前服务未接受平台归因。'}</p>` : '<p>未进行来源归因。</p>'}</section></div>${result.binary_label === 'generated' ? `<section><h2>来源接受条件与诊断</h2><table>${sourceEvidence(result).map(([label, value, note]) => `<tr><th>${escapeHtml(label)}</th><td>${escapeHtml(value)}<br><span class="meta">${escapeHtml(note)}</span></td></tr>`).join('')}</table><p class="meta">${escapeHtml((result.platform_rejection_explanations || []).join('；') || (platformAttributionAccepted(result) ? '当前服务返回来源归因已接受。' : '当前服务未接受平台归因。'))}</p></section>` : ''}<section><h2>判断依据</h2><ol>${technicalRationale(result).map(line => `<li>${escapeHtml(line)}</li>`).join('')}</ol><p class="meta">检测策略：${escapeHtml(POLICY_NAMES[result.policy_profile_id] || result.policy_profile_id || '未提供')}<br>真实区阈值：${asPercent(result.thresholds?.real)} / AI 区阈值：${asPercent(result.thresholds?.generated)}</p>${result.file_sha256 ? `<p class="meta">原始文件 SHA-256</p><p class="hash">${escapeHtml(result.file_sha256)}</p>` : ''}</section><aside class="usage"><h2>使用说明</h2><p>以上评分是模型输出，不是经校准的真实风险率。结果用于辅助核验，不构成真实性证明或独立的平台认证。</p>${resultUsageGuide(result).map(item => `<p><strong>${escapeHtml(item.title)}</strong>：${escapeHtml(item.body)}</p>`).join('')}</aside></main></body></html>`;
+  const modelRows = modelReleaseRows(result).map(([name, value]) => `<tr><th>${escapeHtml(name)}</th><td class="hash">${escapeHtml(value)}</td></tr>`).join('');
+  const statusText = signedReport(result) ? '签名有效，可在线验证' : '未签发，当前仅为本地导出文件';
+  const verificationAction = verificationUrl ? `<a class="verify-link" href="${escapeHtml(verificationUrl)}" target="_blank" rel="noopener noreferrer">在线验证报告</a>` : '';
+  return `<!DOCTYPE html><html lang="zh-CN"><head><meta charset="UTF-8"><meta name="viewport" content="width=device-width,initial-scale=1"><title>图像检测报告 ${escapeHtml(metadata.reportId || '')}</title><style>
+body{margin:0;background:#f4eee8;color:#29231f;font:14px/1.85 'Times New Roman','FangSong','STFangsong','仿宋',serif}.report{max-width:920px;margin:32px auto;padding:42px;background:#fffdf9;border-top:5px solid #751f20;box-shadow:0 18px 60px rgba(71,39,33,.09)}header{border-bottom:2px solid #751f20;padding-bottom:24px}h1,h2{font-family:'Times New Roman','FangSong','STFangsong','仿宋',serif;font-weight:600}h1{font-size:34px;margin:8px 0}h2{font-size:21px;margin:30px 0 12px;color:#751f20}.kicker{color:#751f20;font-size:12px;letter-spacing:.1em}.meta{font-size:12px;color:#706a62;overflow-wrap:anywhere}.status{display:inline-block;margin:10px 0;padding:5px 10px;border:1px solid #751f20;color:#751f20}.conclusion{border-bottom:1px solid #d9cfc6;padding:22px 0}.conclusion h2{margin:0 0 10px;color:#29231f}.grid{display:grid;grid-template-columns:1fr 1fr;gap:28px}table{width:100%;border-collapse:collapse;border-top:1px solid #29231f;border-bottom:1px solid #29231f}th,td{padding:10px 8px;border-bottom:1px solid #e2dcd2;text-align:left;font-size:13px;vertical-align:top}tr:last-child th,tr:last-child td{border-bottom:0}th{font-weight:500;width:38%}.score{font:38px 'Times New Roman','FangSong','STFangsong','仿宋',serif;color:#751f20}.usage{border-top:1px solid #d9cfc6;margin-top:30px;padding-top:16px;font-size:12px;color:#706a62}li{padding-left:8px;margin-bottom:10px}button,.verify-link{display:inline-block;border:1px solid #751f20;background:transparent;color:#751f20;padding:9px 15px;cursor:pointer;text-decoration:none;margin:8px 8px 0 0}.hash{overflow-wrap:anywhere;font-family:'Times New Roman','FangSong','STFangsong','仿宋',serif;font-size:11px}.label-grid{display:grid;grid-template-columns:repeat(3,1fr);gap:1px;background:#d9cfc6;border:1px solid #d9cfc6}.label-grid article{padding:16px;background:#fffdf9}.label-grid h3{margin:0 0 8px;font-size:15px}.label-grid p{margin:0;color:#706a62}@media(max-width:650px){.report{margin:0;padding:24px}.grid,.label-grid{grid-template-columns:1fr}h1{font-size:26px}}@media print{body{background:white}.report{margin:0;padding:12px;border:0;box-shadow:none}button{display:none}h2,tr{break-inside:avoid}h2{break-after:avoid}}</style></head><body><main class="report">
+<header><span class="kicker">AIGC 标识治理研究</span><h1>可核验图像检测报告</h1><p class="status">${escapeHtml(statusText)}</p><p class="meta">报告编号：${escapeHtml(metadata.reportId || '未提供')}<br>文件名：${escapeHtml(fileName)}<br>签发时间：${escapeHtml(metadata.createdAt ? new Date(metadata.createdAt).toLocaleString('zh-CN') : '未提供')}</p><button onclick="window.print()" type="button">打印 / 保存为 PDF</button>${verificationAction}</header>
+<section class="conclusion"><h2>${escapeHtml(decisionLabel(result))}</h2><p>AI 生成评分：<strong class="score">${asPercent(result.generated_probability)}</strong></p><p>来源判断：<strong>${escapeHtml(sourceLabel(result))}</strong></p></section>
+<div class="grid"><section><h2>文件与图像信号</h2><table>${rows}</table></section><section><h2>平台候选评分</h2>${platformRows ? `<table>${platformRows}</table><p class="meta">候选评分不代表来源已经独立确认。${platformAttributionAccepted(result) ? '当前服务接受了来源候选。' : '当前服务未接受平台归因。'}</p>` : '<p>未进行来源归因。</p>'}</section></div>
+${result.binary_label === 'generated' ? `<section><h2>来源接受条件与诊断</h2><table>${sourceEvidence(result).map(([label, value, note]) => `<tr><th>${escapeHtml(label)}</th><td>${escapeHtml(value)}<br><span class="meta">${escapeHtml(note)}</span></td></tr>`).join('')}</table><p class="meta">${escapeHtml((result.platform_rejection_explanations || []).join('；') || (platformAttributionAccepted(result) ? '当前服务返回来源归因已接受。' : '当前服务未接受平台归因。'))}</p></section>` : ''}
+<section><h2>标识与文件层证据</h2><div class="label-grid"><article><h3>显式标识</h3><p>${escapeHtml(readableEvidenceStatus(explicitLabel.status))}</p><p>${escapeHtml(explicitLabel.text || '未记录')}</p></article><article><h3>隐式标识</h3><p>${escapeHtml(readableEvidenceStatus(implicitLabel.status))}</p><p>检出字段 ${escapeHtml((implicitLabel.detected_keys || []).join(', ') || '无')}</p></article><article><h3>生成元数据线索</h3><p>${escapeHtml(readableEvidenceStatus(generationClues.status))}</p><p>检出字段 ${escapeHtml((generationClues.detected_keys || []).join(', ') || '无')}</p></article></div><p class="meta">文件格式 ${escapeHtml(fileMetadata.format || '未记录')} / info 字段 ${escapeHtml(fileMetadata.info_key_count ?? '未记录')} / EXIF 字段 ${escapeHtml(fileMetadata.exif_key_count ?? '未记录')}</p><p class="meta">${escapeHtml(labelEvidence.standard_scope_note || '未记录')}</p></section>
+<section><h2>判断依据</h2><ol>${technicalRationale(result).map(line => `<li>${escapeHtml(line)}</li>`).join('')}</ol><p class="meta">检测策略：${escapeHtml(POLICY_NAMES[result.policy_profile_id] || result.policy_profile_id || '未提供')}<br>真实区阈值：${asPercent(result.thresholds?.real)} / AI 区阈值：${asPercent(result.thresholds?.generated)}</p></section>
+<section><h2>完整性与模型版本</h2><table><tr><th>原始文件 SHA-256</th><td class="hash">${escapeHtml(result.file_sha256 || '未记录')}</td></tr><tr><th>报告内容 SHA-256</th><td class="hash">${escapeHtml(verification.payload_sha256 || '未签发')}</td></tr><tr><th>签名算法</th><td>${escapeHtml(verification.algorithm || '未签发')}</td></tr><tr><th>开集版本</th><td>${escapeHtml(result.model_release?.open_set_version || result.platform_open_set_version || '未记录')}</td></tr>${modelRows}</table></section>
+<aside class="usage"><h2>使用边界</h2><p>报告验证用于确认签发内容是否被修改，不等同于图像真实性认证。模型判定、平台线索和标识核验是三个不同层次。</p>${resultUsageGuide(result).map(item => `<p><strong>${escapeHtml(item.title)}</strong>：${escapeHtml(item.body)}</p>`).join('')}</aside>
+</main></body></html>`;
 }
 
 fileInput.addEventListener('change', () => selectFiles(Array.from(fileInput.files || [])));
