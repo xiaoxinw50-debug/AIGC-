@@ -1,0 +1,4 @@
+threshold,max_real_incremental_review_rate,mean_real_incremental_review_rate,total_generated_false_negative_count,total_generated_false_negative_rescued,total_generated_false_negative_rescue_rate,mean_scope_generated_false_negative_rescue_rate,incremental_review_count,real_review_cap,policy_id
+0.92914,0.008,0.002,270.0,2.0,0.007407407407407408,0.021059782608695652,6.0,0.01,npr_transfer_review_cap_01pct
+0.83433,0.026,0.010129326047358833,270.0,10.0,0.037037037037037035,0.1642786561264822,31.0,0.03,npr_transfer_review_cap_03pct
+0.710734089756017,0.048,0.028116575591985427,270.0,16.0,0.05925925925925926,0.19751685359443028,83.0,0.05,npr_transfer_review_cap_05pct
