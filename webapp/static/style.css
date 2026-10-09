@@ -45,6 +45,9 @@ svg { fill: none; stroke: currentColor; stroke-width: 1.5; stroke-linecap: round
 .hero h1 { margin: 8px 0 10px; font: 600 clamp(30px, 3.3vw, 44px)/1.35 var(--serif); letter-spacing: -.015em; }
 .hero h1 span { margin-left: .45em; color: var(--wine); }
 .hero-subtitle { color: var(--muted); font-size: 14px; }
+.project-introduction { display: grid; grid-template-columns: 82px minmax(0, 1fr); gap: 28px; max-width: 1060px; margin-top: 19px; padding-top: 18px; border-top: 1px solid var(--line); }
+.introduction-label { color: var(--wine); font-size: 12px; letter-spacing: .12em; white-space: nowrap; }
+.introduction-copy { max-width: 920px; color: #4f4a44; font-size: 14px; line-height: 1.95; text-align: justify; text-justify: inter-ideograph; }
 .platform-strip { display: flex; gap: 28px; align-items: center; padding: 13px 0; border-top: 1px solid var(--line); border-bottom: 1px solid var(--line); }
 .strip-label { flex-shrink: 0; font-size: 12px; color: var(--muted); }
 .platform-names { display: flex; flex-wrap: wrap; gap: 12px 30px; font-size: 13px; }
@@ -239,6 +242,9 @@ details[open] > summary::after { content: '\2212'; }
   .eyebrow { font-size: 11px; }
   .hero h1 { font-size: 30px; margin-top: 7px; line-height: 1.28; }
   .hero h1 span { display: block; margin-left: 0; }
+  .project-introduction { grid-template-columns: minmax(0, 1fr); gap: 5px; margin-top: 15px; padding-top: 14px; }
+  .introduction-label { font-size: 11px; }
+  .introduction-copy { font-size: 13px; line-height: 1.85; text-align: left; }
   .platform-strip { display: block; padding: 10px 0 11px; }
   .strip-label { display: block; font-size: 11px; }
   .platform-names { display: grid; grid-template-columns: repeat(2, minmax(0, 1fr)); gap: 3px 14px; margin-top: 6px; font-size: 12px; }
