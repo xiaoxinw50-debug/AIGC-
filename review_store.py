@@ -51,6 +51,7 @@ def init_db() -> None:
                 platform_label TEXT NOT NULL,
                 platform_candidate TEXT NOT NULL,
                 platform_confidence REAL NOT NULL,
+                knownness_score REAL NOT NULL DEFAULT 0.0,
                 platform_margin REAL NOT NULL,
                 model_agreement INTEGER NOT NULL,
                 drift_score REAL NOT NULL,
@@ -62,6 +63,14 @@ def init_db() -> None:
             )
             """
         )
+        columns = {
+            row["name"]
+            for row in connection.execute("PRAGMA table_info(review_cases)").fetchall()
+        }
+        if "knownness_score" not in columns:
+            connection.execute(
+                "ALTER TABLE review_cases ADD COLUMN knownness_score REAL NOT NULL DEFAULT 0.0"
+            )
 
 
 def row_to_dict(row: sqlite3.Row) -> dict[str, Any]:
@@ -90,6 +99,7 @@ def create_case(payload: dict[str, Any]) -> dict[str, Any]:
         "platform_label": str(payload.get("platform_label", "unknown_platform"))[:64],
         "platform_candidate": str(payload.get("platform_candidate", ""))[:64],
         "platform_confidence": float(payload.get("platform_confidence", 0.0)),
+        "knownness_score": float(payload.get("knownness_score", 0.0)),
         "platform_margin": float(payload.get("platform_margin", 0.0)),
         "model_agreement": int(bool(payload.get("model_agreement", False))),
         "drift_score": float(payload.get("drift_score", 0.0)),

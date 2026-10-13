@@ -1,16 +1,20 @@
 {
-  "version": "platform_open_set_ensemble_v5",
+  "version": "platform_knownness_gate_v6",
   "platform_labels": [
     "PLT01",
     "PLT02",
     "PLT03",
     "PLT05"
   ],
-  "native_weight": 0.5,
-  "robust_weight": 0.5,
+  "probability_weights": {
+    "native": 0.55,
+    "robust": 0.05,
+    "public_prior": 0.4
+  },
   "temperature": 1.0,
-  "min_confidence": 0.95,
+  "min_confidence": 0.8,
   "min_margin": 0.0,
+  "min_knownness_score": 0.8,
   "require_model_agreement": false,
   "drift_reference": {
     "feature_names": [
@@ -56,8 +60,9 @@
   "unknown_label": "unknown_platform",
   "selection_status": "strict_constraints_met",
   "selection_constraints": {
-    "calibration_unknown_false_attribution_rate_max": 0.05,
-    "calibration_known_accepted_accuracy_min": 0.8
+    "calibration_unknown_false_attribution_rate_max": 0.02,
+    "calibration_known_accepted_accuracy_min": 0.95
   },
-  "training_note": "Native-export and propagation-robust probability fusion; temperature and rejection thresholds selected without touching source-group/model-family held-out tests."
+  "selected_gate_model": "logreg_scaled_c01",
+  "training_note": "Knownness gate trained on source-group-isolated native rows and public unknown families. Unknown calibration scores use leave-one-generator-family-out predictions. Final tests remain untouched."
 }

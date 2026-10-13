@@ -10,7 +10,19 @@ from feature_utils import compute_image_features
 
 
 def load_bundle(path: Path) -> dict[str, Any]:
-    return joblib.load(path)
+    bundle = joblib.load(path)
+    _repair_sklearn_compatibility(bundle.get("model"))
+    return bundle
+
+
+def _repair_sklearn_compatibility(model: Any) -> None:
+    """Keep 1.8-saved logistic models usable in the 1.7 local QA runtime."""
+    if model is None:
+        return
+    if model.__class__.__name__ == "LogisticRegression" and not hasattr(model, "multi_class"):
+        model.multi_class = "auto"
+    for _, step in getattr(model, "steps", []):
+        _repair_sklearn_compatibility(step)
 
 
 def generated_prob(model: Any, x: np.ndarray, generated_label: Any) -> float:
@@ -71,6 +83,74 @@ def fuse_platform_probabilities(
     return exp / exp.sum()
 
 
+def fuse_weighted_platform_probabilities(
+    native: np.ndarray,
+    robust: np.ndarray,
+    public_prior: np.ndarray,
+    *,
+    weights: dict[str, float],
+    temperature: float,
+) -> np.ndarray:
+    combined = (
+        float(weights.get("native", 1.0)) * native
+        + float(weights.get("robust", 0.0)) * robust
+        + float(weights.get("public_prior", 0.0)) * public_prior
+    )
+    combined = combined / max(float(combined.sum()), 1e-12)
+    logits = np.log(np.clip(combined, 1e-9, 1.0)) / max(float(temperature), 1e-6)
+    logits -= logits.max()
+    exp = np.exp(logits)
+    return exp / exp.sum()
+
+
+def probability_summary(probabilities: np.ndarray) -> tuple[float, float, float]:
+    ordered = np.sort(probabilities)
+    confidence = float(ordered[-1])
+    margin = float(ordered[-1] - ordered[-2]) if len(ordered) > 1 else confidence
+    clipped = np.clip(probabilities, 1e-9, 1.0)
+    entropy = float(-np.sum(clipped * np.log(clipped)))
+    return confidence, margin, entropy
+
+
+def knownness_gate_probability(
+    feats: dict[str, Any],
+    native: np.ndarray,
+    robust: np.ndarray,
+    public_prior: np.ndarray,
+    labels: list[str],
+    drift_score: float,
+    gate_bundle: dict[str, Any],
+) -> float:
+    values = {name: float(feats.get(name, 0.0)) for name in gate_bundle.get("base_feature_names", [])}
+    for prefix, probabilities in [
+        ("native", native),
+        ("robust", robust),
+        ("public_prior", public_prior),
+    ]:
+        for label, probability in zip(labels, probabilities):
+            values[f"{prefix}_prob_{label}"] = float(probability)
+        confidence, margin, entropy_value = probability_summary(probabilities)
+        values[f"{prefix}_max_probability"] = confidence
+        values[f"{prefix}_margin"] = margin
+        values[f"{prefix}_entropy"] = entropy_value
+
+    native_top = int(np.argmax(native))
+    robust_top = int(np.argmax(robust))
+    public_top = int(np.argmax(public_prior))
+    values["native_robust_agreement"] = float(native_top == robust_top)
+    values["native_public_agreement"] = float(native_top == public_top)
+    values["robust_public_agreement"] = float(robust_top == public_top)
+    values["drift_score"] = float(drift_score)
+
+    names = list(gate_bundle["feature_names"])
+    matrix = np.asarray([[values.get(name, 0.0) for name in names]], dtype="float64")
+    matrix = np.nan_to_num(matrix, nan=0.0, posinf=0.0, neginf=0.0)
+    model = gate_bundle["model"]
+    classes = list(model.classes_)
+    known_label = gate_bundle.get("known_label", 1)
+    return float(model.predict_proba(matrix)[0][classes.index(known_label)])
+
+
 def distribution_drift(feats: dict[str, Any], config: dict[str, Any]) -> tuple[float, bool]:
     reference = config.get("drift_reference") or {}
     names = list(reference.get("feature_names") or [])
@@ -94,6 +174,8 @@ def predict_one(
     platform_bundle: dict[str, Any],
     robust_platform_bundle: dict[str, Any] | None = None,
     platform_open_set_config: dict[str, Any] | None = None,
+    public_platform_bundle: dict[str, Any] | None = None,
+    knownness_gate_bundle: dict[str, Any] | None = None,
     *,
     generated_threshold: float = 0.75,
     real_threshold: float = 0.35,
@@ -133,14 +215,30 @@ def predict_one(
     else:
         robust_probs = native_probs.copy()
 
-    native_weight = float(config.get("native_weight", 1.0))
+    if public_platform_bundle is not None:
+        public_x = matrix_from_features(feats, public_platform_bundle)
+        public_probs = aligned_probabilities(public_platform_bundle["model"], public_x, labels)
+    else:
+        public_probs = robust_probs.copy()
+
     temperature = float(config.get("temperature", 1.0))
-    fused_probs = fuse_platform_probabilities(
-        native_probs,
-        robust_probs,
-        native_weight=native_weight,
-        temperature=temperature,
-    )
+    probability_weights = config.get("probability_weights")
+    if isinstance(probability_weights, dict) and public_platform_bundle is not None:
+        fused_probs = fuse_weighted_platform_probabilities(
+            native_probs,
+            robust_probs,
+            public_probs,
+            weights=probability_weights,
+            temperature=temperature,
+        )
+    else:
+        native_weight = float(config.get("native_weight", 1.0))
+        fused_probs = fuse_platform_probabilities(
+            native_probs,
+            robust_probs,
+            native_weight=native_weight,
+            temperature=temperature,
+        )
     order = np.argsort(fused_probs)
     top1_index = int(order[-1])
     top2_index = int(order[-2]) if len(order) > 1 else top1_index
@@ -149,13 +247,29 @@ def predict_one(
     platform_margin = float(fused_probs[top1_index] - fused_probs[top2_index])
     native_pred = labels[int(np.argmax(native_probs))]
     robust_pred = labels[int(np.argmax(robust_probs))]
+    public_pred = labels[int(np.argmax(public_probs))]
     model_agreement = native_pred == robust_pred
     drift_score, drift_flag = distribution_drift(feats, config)
+    if knownness_gate_bundle is not None:
+        knownness_score = knownness_gate_probability(
+            feats,
+            native_probs,
+            robust_probs,
+            public_probs,
+            labels,
+            drift_score,
+            knownness_gate_bundle,
+        )
+    else:
+        knownness_score = 1.0
 
     min_confidence = float(config.get("min_confidence", 0.0))
     min_margin = float(config.get("min_margin", 0.0))
+    min_knownness_score = float(config.get("min_knownness_score", 0.0))
     require_agreement = bool(config.get("require_model_agreement", False))
     rejection_reasons: list[str] = []
+    if knownness_score < min_knownness_score:
+        rejection_reasons.append("unknown_generator_gate")
     if platform_confidence < min_confidence:
         rejection_reasons.append("confidence_below_threshold")
     if platform_margin < min_margin:
@@ -168,6 +282,7 @@ def predict_one(
     platform_prob_map = {label: float(prob) for label, prob in zip(labels, fused_probs)}
     native_prob_map = {label: float(prob) for label, prob in zip(labels, native_probs)}
     robust_prob_map = {label: float(prob) for label, prob in zip(labels, robust_probs)}
+    public_prob_map = {label: float(prob) for label, prob in zip(labels, public_probs)}
     if binary_pred == "generated":
         final_pred = platform_pred if platform_accepted else str(config.get("unknown_label", "unknown_platform"))
         risk_level = "high" if platform_accepted else "review"
@@ -195,9 +310,12 @@ def predict_one(
         "pred_platform_probabilities": platform_prob_map,
         "pred_platform_native_probabilities": native_prob_map,
         "pred_platform_robust_probabilities": robust_prob_map,
+        "pred_platform_public_probabilities": public_prob_map,
         "platform_native_pred": native_pred,
         "platform_robust_pred": robust_pred,
+        "platform_public_pred": public_pred,
         "platform_model_agreement": model_agreement,
+        "platform_knownness_score": round(knownness_score, 8),
         "platform_confidence": round(platform_confidence, 8),
         "platform_margin": round(platform_margin, 8),
         "platform_drift_score": round(drift_score, 8),
@@ -207,6 +325,7 @@ def predict_one(
         "platform_open_set_version": str(config.get("version", "disabled")),
         "platform_min_confidence": min_confidence,
         "platform_min_margin": min_margin,
+        "platform_min_knownness_score": min_knownness_score,
         "platform_require_agreement": require_agreement,
         "risk_level": risk_level,
         "risk_text": risk_text,
