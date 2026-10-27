@@ -8,7 +8,7 @@ import os
 import tempfile
 from pathlib import Path
 
-from flask import Flask, Response, jsonify, render_template, request
+from flask import Flask, Response, jsonify, render_template, request, send_from_directory
 from PIL import Image
 
 from model_payload import ensure_model_artifacts
@@ -28,6 +28,7 @@ from review_store import create_case, database_path, export_csv, init_db, list_c
 
 
 ROOT = Path(__file__).resolve().parent
+LAB_SITE_ROOT = ROOT / "lab_site"
 MODEL_DIR = ensure_model_artifacts(ROOT)
 BINARY_BUNDLE = MODEL_DIR / "binary_model_bundle.joblib"
 PLATFORM_BUNDLE = MODEL_DIR / "platform_model_bundle.joblib"
@@ -302,6 +303,16 @@ def index():
     )
 
 
+@app.get("/lab/")
+def lab_site_index():
+    return send_from_directory(LAB_SITE_ROOT, "index.html")
+
+
+@app.get("/lab/<path:filename>")
+def lab_site_asset(filename: str):
+    return send_from_directory(LAB_SITE_ROOT, filename)
+
+
 @app.get("/api/health")
 def health():
     return jsonify(
@@ -317,6 +328,10 @@ def health():
             "real_threshold": REAL_THRESHOLD,
             "default_policy_profile": DEFAULT_POLICY_ID,
             "policy_profiles": POLICY_PROFILES,
+            "lab_site": {
+                "path": "/lab/",
+                "available": (LAB_SITE_ROOT / "index.html").exists(),
+            },
             "review_queue": {
                 "persistence_mode": persistence_mode(),
                 "database_path": str(database_path()),

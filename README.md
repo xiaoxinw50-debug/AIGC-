@@ -4,6 +4,7 @@
 
 1. `GitHub Pages` 静态展示页
 2. `Render` 可推理 Flask 服务
+3. `/lab/` 文化数据治理实验室展示页
 
 ## 说明
 
@@ -63,6 +64,13 @@ python -m unittest discover -s tests -v
 Render 部署入口：
 
 - [一键导入 Render](https://render.com/deploy?repo=https://github.com/xiaoxinw50-debug/AIGC-)
+
+实验室页面与推理服务共用一个 Render 实例：
+
+- 推理平台：`https://aigc-image-inference-demo.onrender.com/`
+- 实验室官网：`https://aigc-image-inference-demo.onrender.com/lab/`
+
+提交 `app.py`、`lab_site/` 和测试文件后，Render 的自动部署会同时发布两个入口，不需要新增服务或环境变量。
 
 ## 发布方式
 

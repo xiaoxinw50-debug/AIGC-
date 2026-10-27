@@ -44,9 +44,35 @@ class AppIntegrationTest(unittest.TestCase):
         self.assertEqual(response.json["platform_open_set"], "platform_knownness_gate_v6")
         self.assertTrue(response.json["public_platform_model"])
         self.assertTrue(response.json["knownness_gate_model"])
+        self.assertEqual(response.json["lab_site"]["path"], "/lab/")
+        self.assertTrue(response.json["lab_site"]["available"])
         self.assertFalse(response.json["review_queue"]["stores_original_images"])
         self.assertTrue(response.json["report_verification"]["signing_ready"])
         self.assertEqual(response.json["report_verification"]["schema_version"], "aigc-detection-report/1.0")
+
+    def test_lab_site_and_assets_are_served_under_isolated_route(self) -> None:
+        redirect = self.client.get("/lab")
+        self.assertEqual(redirect.status_code, 308)
+        self.assertTrue(redirect.headers["Location"].endswith("/lab/"))
+
+        page = self.client.get("/lab/")
+        stylesheet = self.client.get("/lab/styles.css")
+        script = self.client.get("/lab/script.js")
+        image = self.client.get("/lab/assets/shi-jing-public-domain.jpg")
+
+        self.assertEqual(page.status_code, 200)
+        self.assertIn("文化数据治理实验室", page.get_data(as_text=True))
+        self.assertEqual(stylesheet.status_code, 200)
+        self.assertEqual(script.status_code, 200)
+        self.assertEqual(image.status_code, 200)
+        self.assertTrue(stylesheet.mimetype.startswith("text/css"))
+        self.assertIn("javascript", script.mimetype)
+        self.assertEqual(image.mimetype, "image/jpeg")
+
+        page.close()
+        stylesheet.close()
+        script.close()
+        image.close()
 
     def test_real_control_routes_to_low_risk(self) -> None:
         result = self.predict("assets/samples/realctrl_person_01.jpg")
